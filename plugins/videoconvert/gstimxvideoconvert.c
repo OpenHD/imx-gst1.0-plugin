@@ -1273,6 +1273,49 @@ static gboolean imx_video_convert_set_info(GstVideoFilter *filter,
   return TRUE;
 }
 
+static gboolean
+imx_video_convert_accept_caps (GstBaseTransform * transform,
+    GstPadDirection direction, GstCaps * caps)
+{
+  GstPad *pad;
+  gboolean ret = TRUE;
+  GstImxVideoConvert *imxvct = (GstImxVideoConvert *)(transform);
+  Imx2DDevice *device = imxvct->device;
+
+  GST_DEBUG_OBJECT (transform, "accept caps %" GST_PTR_FORMAT, caps);
+  /* Check whether the current format conversion
+   * is supported for OpenGL-based 2d device */
+  if (device->device_type == IMX_2D_DEVICE_OCL) {
+    pad =
+      (direction ==
+      GST_PAD_SINK) ? GST_BASE_TRANSFORM_SRC_PAD (transform) :
+      GST_BASE_TRANSFORM_SINK_PAD (transform);
+
+    GstQuery *query = gst_query_new_caps (NULL);
+    if (gst_pad_peer_query (pad, query)) {
+      GstCaps *rescaps = NULL;
+
+      gst_query_parse_caps_result (query, &rescaps);
+      if (!rescaps || gst_caps_is_any (rescaps) || gst_caps_is_empty (rescaps)) {
+        GST_DEBUG_OBJECT (transform, "can't provide caps");
+      } else {
+        if (direction == GST_PAD_SINK) {
+          ret = device->check_conversion (caps, rescaps);
+        } else {
+          ret = device->check_conversion (rescaps, caps);
+        }
+        GST_DEBUG_OBJECT (transform, "query caps %" GST_PTR_FORMAT
+            ", accept-caps result: %d", rescaps, ret);
+        gst_query_unref (query);
+        return ret;
+      }
+    }
+    gst_query_unref (query);
+  }
+
+  return GST_BASE_TRANSFORM_CLASS(parent_class)->accept_caps(transform, direction, caps);
+}
+
 static guint8 *
 _get_cached_phyaddr (GstMemory * mem)
 {
@@ -1974,6 +2017,8 @@ gst_imx_video_convert_class_init (GstImxVideoConvertClass * klass)
       GST_DEBUG_FUNCPTR(imx_video_convert_transform);
   base_transform_class->transform_ip =
       GST_DEBUG_FUNCPTR(imx_video_convert_transform_ip);
+  base_transform_class->accept_caps =
+    GST_DEBUG_FUNCPTR (imx_video_convert_accept_caps);
 
   base_transform_class->passthrough_on_same_caps = TRUE;
 }

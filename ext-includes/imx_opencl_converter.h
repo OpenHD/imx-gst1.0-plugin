@@ -57,6 +57,11 @@ typedef enum ocl_pixel_format{
     OCL_FORMAT_YUYV = 17,
 }OCL_PIXEL_FORMAT;
 
+typedef struct {
+    OCL_PIXEL_FORMAT input_format;
+    OCL_PIXEL_FORMAT output_format;
+}OCL_PIXEL_FORMAT_GROUP;
+
 typedef enum ocl_colorspace{
     OCL_COLORSPACE_DEFAULT = 0,//default: bt601_625
     OCL_COLORSPACE_BT601_625,
@@ -168,6 +173,18 @@ const char* OCL_QueryVersion();
  * @return value in OCL_RESULT.
  */
 OCL_RESULT OCL_QuerySupportFormat(OCL_PORT port, int * num_of_fmt, OCL_PIXEL_FORMAT ** fmt);
+
+/**
+ * Function to get the map of all supported convertible groups
+ * Before user call OCL_Open(), user can query all the groups to see if
+ * the pixel format of input and output buffer can meets their requirements.
+ * Then decice whether to use this library to do format conversion.
+ *
+ * @param num_of_group [out] number of supported pixel format groups.
+ * @param fmt_group [out] pointer to convertible group array which contain input and output formats.
+ * @return value in OCL_RESULT.
+ */
+OCL_RESULT OCL_QuerySupportMap(int * num_of_group, OCL_PIXEL_FORMAT_GROUP ** fmt_group);
 
 typedef enum ocl_open_flag
 {

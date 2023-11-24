@@ -157,6 +157,7 @@ struct _Imx2DDevice {
   GList*               (*get_supported_out_fmts)  (Imx2DDevice* device);
   Imx2DRotationMode    (*get_rotate)              (Imx2DDevice* device);
   Imx2DDeinterlaceMode (*get_deinterlace)         (Imx2DDevice* device);
+  gboolean (*check_conversion) (GstCaps *input_caps, GstCaps *output_caps);
 };
 
 typedef struct _Imx2DDeviceInfo {

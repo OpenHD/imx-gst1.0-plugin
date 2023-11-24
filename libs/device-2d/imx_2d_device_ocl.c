@@ -41,43 +41,20 @@ typedef struct {
   guint bpp;
 } OclFmtMap;
 
-static OclFmtMap ocl_fmts_in_map[] = {
+static OclFmtMap ocl_fmts_map[] = {
     {GST_VIDEO_FORMAT_RGBx,   OCL_FORMAT_RGBX8888, 32},
     {GST_VIDEO_FORMAT_RGBA,   OCL_FORMAT_RGBA8888, 32},
-    {GST_VIDEO_FORMAT_NV12,   OCL_FORMAT_NV12,     12},
-    {GST_VIDEO_FORMAT_YUY2,   OCL_FORMAT_YUYV,     16},
-    {GST_VIDEO_FORMAT_UNKNOWN, -1,          0}
-};
-
-static OclFmtMap ocl_fmts_in_amphion_map[] = {
-    {GST_VIDEO_FORMAT_RGBx,   OCL_FORMAT_RGBX8888, 32},
-    {GST_VIDEO_FORMAT_RGBA,   OCL_FORMAT_RGBA8888, 32},
+    {GST_VIDEO_FORMAT_RGB,    OCL_FORMAT_RGB888,   24},
     {GST_VIDEO_FORMAT_NV12,   OCL_FORMAT_NV12,     12},
     {GST_VIDEO_FORMAT_YUY2,   OCL_FORMAT_YUYV,     16},
     {GST_VIDEO_FORMAT_NV12_8L128, OCL_FORMAT_NV12_TILED, 12},
     {GST_VIDEO_FORMAT_NV12_10BE_8L128, OCL_FORMAT_NV15_TILED, 15},
-    {GST_VIDEO_FORMAT_UNKNOWN, -1,          0}
+    {GST_VIDEO_FORMAT_UNKNOWN, -1, 0}
 };
 
-static OclFmtMap ocl_fmts_out_map[] = {
-    {GST_VIDEO_FORMAT_RGB,    OCL_FORMAT_RGB888,   24},
-    {GST_VIDEO_FORMAT_NV12,   OCL_FORMAT_NV12,     12},
-    {GST_VIDEO_FORMAT_UNKNOWN, -1,          0}
-};
-
-static const OclFmtMap * imx_ocl_get_format (GstVideoFormat format, gboolean is_input)
+static const OclFmtMap * imx_ocl_get_format_map (GstVideoFormat format)
 {
-  const OclFmtMap *map = NULL;
-
-  if (is_input) {
-    if (IS_AMPHION()) {
-      map = ocl_fmts_in_amphion_map;
-    } else {
-      map = ocl_fmts_in_map;
-    }
-  } else {
-    map = ocl_fmts_out_map;
-  }
+  const OclFmtMap *map = ocl_fmts_map;
 
   while (map->bpp > 0) {
     if (map->gst_video_format == format)
@@ -85,7 +62,7 @@ static const OclFmtMap * imx_ocl_get_format (GstVideoFormat format, gboolean is_
     map++;
   };
 
-  GST_ERROR ("ocl : format (%s) is not supported.",
+  GST_INFO ("ocl : format (%s) is not supported.",
               gst_video_format_to_string(format));
 
   return NULL;
@@ -211,7 +188,7 @@ static gint imx_ocl_config_input(Imx2DDevice *device, Imx2DVideoInfo* in_info)
     return -1;
 
   Imx2DDeviceOcl *ocl = (Imx2DDeviceOcl *) (device->priv);
-  const OclFmtMap *in_map = imx_ocl_get_format(in_info->fmt, TRUE);
+  const OclFmtMap *in_map = imx_ocl_get_format_map(in_info->fmt);
   if (!in_map)
     return -1;
 
@@ -244,7 +221,7 @@ static gint imx_ocl_config_output(Imx2DDevice *device, Imx2DVideoInfo* out_info)
     return -1;
 
   Imx2DDeviceOcl *ocl = (Imx2DDeviceOcl *) (device->priv);
-  const OclFmtMap *out_map = imx_ocl_get_format(out_info->fmt, FALSE);
+  const OclFmtMap *out_map = imx_ocl_get_format_map(out_info->fmt);
   if (!out_map)
     return -1;
 
@@ -285,7 +262,7 @@ static gint imx_ocl_set_plane (void *handle, OCL_BUFFER *buf, OCL_FORMAT *ocl_fo
   buf->planes[i].fd = frame->fd[0];
   buf->planes[i].offset = 0;
   GST_TRACE ("ocl : plane num: %d , planes[%d].size: 0x%x, planes[%d].paddr: %p, planes[%d].fd: 0x%x",
-    buf->plane_num, i, buf->planes[i].size, i, (guint8 *)buf->planes[i].paddr, buf->planes[i].fd);
+    buf->plane_num, i, buf->planes[i].size, i, (guint8 *)buf->planes[i].paddr, i, buf->planes[i].fd);
   i++;
   if (plane_info.plane_num <= 1) {
     return 0;
@@ -300,7 +277,7 @@ static gint imx_ocl_set_plane (void *handle, OCL_BUFFER *buf, OCL_FORMAT *ocl_fo
     else
       buf->planes[i].fd = frame->fd[0];
     GST_TRACE ("ocl : plane num: %d , planes[%d].size: 0x%x, planes[%d].paddr: %p, planes[%d].fd: 0x%x",
-    buf->plane_num, i, buf->planes[i].size, i, (guint8 *)buf->planes[i].paddr, buf->planes[i].fd);
+    buf->plane_num, i, buf->planes[i].size, i, (guint8 *)buf->planes[i].paddr, i, buf->planes[i].fd);
     i++;
   }
 
@@ -507,36 +484,106 @@ static gint imx_ocl_get_capabilities (Imx2DDevice* device)
   return capabilities;
 }
 
+static GList* imx_ocl_get_supported_fmts (OCL_PORT port)
+{
+  int i = 0;
+  int fmt_num = 0;
+  OCL_PIXEL_FORMAT *p_fmt;
+  const OclFmtMap *map = NULL;
+  GList* list = NULL;
+
+  GST_INFO ("get all supported formats: port %d ", port);
+  OCL_QuerySupportFormat (port, &fmt_num, &p_fmt);
+  while (i < fmt_num) {
+    map = ocl_fmts_map;
+    while (map->gst_video_format != GST_VIDEO_FORMAT_UNKNOWN) {
+      if (map->ocl_pixel_format == *(p_fmt + i)) {
+        list = g_list_append(list, (gpointer)map->gst_video_format);
+        break;
+      }
+      map++;
+    }
+    i++;
+  }
+
+  if ((!IS_AMPHION()) && port == OCL_PORT_TYPE_INPUT) {
+    /* The two formats are supported only for amphion VPU */
+    GstVideoFormat ignore_list[2] = {GST_VIDEO_FORMAT_NV12_8L128,
+      GST_VIDEO_FORMAT_NV12_10BE_8L128};
+    list = g_list_remove (list, (gpointer)ignore_list[0]);
+    list = g_list_remove (list, (gpointer)ignore_list[1]);
+  }
+
+  return list;
+}
+
+static GstVideoFormat imx_ocl_get_format (GstCaps * caps)
+{
+  gint i, caps_size;
+  GstStructure *st;
+  const GValue *format;
+  const gchar *fmt_name;
+
+  caps_size = gst_caps_get_size (caps);
+  for (i = 0; i < caps_size; i++) {
+    st = gst_caps_get_structure(caps, i);
+    format = gst_structure_get_value (st, "format");
+    if (!GST_VALUE_HOLDS_LIST (format) && G_VALUE_HOLDS_STRING (format)) {
+      fmt_name = g_value_get_string (format);
+      return gst_video_format_from_string(fmt_name);
+    }
+  }
+
+  return GST_VIDEO_FORMAT_UNKNOWN;
+}
+
+static gboolean imx_ocl_check_conversion (GstCaps *input_caps, GstCaps *output_caps)
+{
+  OCL_PIXEL_FORMAT_GROUP *p_group;
+  int fmt_num = 0;
+  int i = 0;
+  OCL_PIXEL_FORMAT in_pixel_format;
+  OCL_PIXEL_FORMAT out_pixel_format;
+
+  const OclFmtMap *in_map = imx_ocl_get_format_map (imx_ocl_get_format(input_caps));
+  const OclFmtMap *out_map = imx_ocl_get_format_map (imx_ocl_get_format(output_caps));
+
+  if (!in_map || !out_map) {
+    GST_INFO ("No valid input or output format, input caps %" GST_PTR_FORMAT
+        ", output_caps %" GST_PTR_FORMAT, input_caps, output_caps);
+    return FALSE;
+  }
+  in_pixel_format = in_map->ocl_pixel_format;
+  out_pixel_format = out_map->ocl_pixel_format;
+
+  if (!IS_AMPHION()) {
+    if (in_pixel_format == OCL_FORMAT_NV12_TILED
+        || in_pixel_format == OCL_FORMAT_NV15_TILED) {
+      return FALSE;
+    }
+  }
+
+  OCL_QuerySupportMap (&fmt_num, &p_group);
+  while (i < fmt_num) {
+    if (p_group->input_format == in_pixel_format
+        && p_group->output_format == out_pixel_format) {
+      return TRUE;
+    }
+    i++;
+    p_group++;
+  }
+
+  return FALSE;
+}
+
 static GList* imx_ocl_get_supported_in_fmts (Imx2DDevice* device)
 {
-  GList* list = NULL;
-  const OclFmtMap *map = NULL;
-
-  if (IS_AMPHION()) {
-    map = ocl_fmts_in_amphion_map;
-  } else {
-    map = ocl_fmts_in_map;
-  }
-
-  while (map->bpp > 0) {
-    if (map->gst_video_format != GST_VIDEO_FORMAT_UNKNOWN)
-      list = g_list_append(list, (gpointer)(map->gst_video_format));
-    map++;
-  }
-  return list;
+  return imx_ocl_get_supported_fmts (OCL_PORT_TYPE_INPUT);
 }
 
 static GList* imx_ocl_get_supported_out_fmts (Imx2DDevice* device)
 {
-  GList* list = NULL;
-  const OclFmtMap *map = ocl_fmts_out_map;
-
-  while (map->bpp > 0) {
-    if (map->gst_video_format != GST_VIDEO_FORMAT_UNKNOWN)
-      list = g_list_append(list, (gpointer)(map->gst_video_format));
-    map++;
-  }
-  return list;
+  return imx_ocl_get_supported_fmts (OCL_PORT_TYPE_OUTPUT);
 }
 
 static gint imx_ocl_blend (Imx2DDevice *device, Imx2DFrame *dst, Imx2DFrame *src)
@@ -585,6 +632,7 @@ Imx2DDevice * imx_ocl_create (Imx2DDeviceType  device_type)
   device->get_capabilities    = imx_ocl_get_capabilities;
   device->get_supported_in_fmts  = imx_ocl_get_supported_in_fmts;
   device->get_supported_out_fmts = imx_ocl_get_supported_out_fmts;
+  device->check_conversion       = imx_ocl_check_conversion;
 
   return device;
 }
