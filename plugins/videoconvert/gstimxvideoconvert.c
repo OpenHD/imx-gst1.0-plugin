@@ -195,6 +195,11 @@ static void gst_imx_video_convert_finalize (GObject * object)
   GstImxVideoConvertClass *klass =
         (GstImxVideoConvertClass *) G_OBJECT_GET_CLASS (imxvct);
 
+  GST_INFO_OBJECT (imxvct, "imx_video_convert_result, frames:%" G_GUINT64_FORMAT
+      " time:%" G_GUINT64_FORMAT " fps:%.3f\n",
+      imxvct->total_frames, imxvct->total_time,
+      (imxvct->total_time != 0) ? ((gfloat)1000000* imxvct->total_frames / imxvct->total_time): 0);
+
   imx_video_overlay_composition_deinit(&imxvct->video_comp);
 
   GST_IMX_CONVERT_UNREF_BUFFER (imxvct->in_buf);
@@ -1563,7 +1568,7 @@ static GstFlowReturn imx_video_convert_transform(GstBaseTransform * trans, GstBu
     dmabuf_meta->drm_modifier = 0;
   }
 
-  GST_INFO_OBJECT (imxvct, "buffer modifier type %" G_GUINT64_FORMAT, drm_modifier);
+  GST_TRACE_OBJECT (imxvct, "buffer modifier type %" G_GUINT64_FORMAT, drm_modifier);
 
   switch (GST_VIDEO_FORMAT_INFO_FORMAT(in_info.finfo)) {
   case GST_VIDEO_FORMAT_NV12_8L128:
@@ -1708,9 +1713,12 @@ static GstFlowReturn imx_video_convert_transform(GstBaseTransform * trans, GstBu
   if (!dst.mem->paddr)
     dst.mem->paddr = _get_cached_phyaddr (gst_buffer_peek_memory (outbuf, 0));
 
+  gint64 start_time = g_get_monotonic_time ();
   //convert
   if (device->convert(device, &dst, &src) == 0) {
-    GST_TRACE ("frame conversion done");
+    imxvct->total_frames++;
+    imxvct->total_time += g_get_monotonic_time () - start_time;
+    GST_TRACE_OBJECT (imxvct, "frame conversion done, time: %" G_GUINT64_FORMAT, g_get_monotonic_time () - start_time);
 
     if (!_get_cached_phyaddr (gst_buffer_peek_memory (input_buf, 0)))
       _set_cached_phyaddr (gst_buffer_peek_memory (input_buf, 0), src.mem->paddr);
@@ -2054,6 +2062,8 @@ gst_imx_video_convert_init (GstImxVideoConvert * imxvct)
       imxvct->in_place = GST_IMX_VIDEO_COMPOMETA_IN_PLACE_DEFAULT;
       imxvct->videocrop_meta_enable = GST_IMX_VIDEO_VIDEOCROP_META_DEFAULT;
       imx_video_overlay_composition_init(&imxvct->video_comp, imxvct->device);
+      imxvct->total_time = 0;
+      imxvct->total_frames = 0;
     }
   } else {
     GST_ERROR ("Create video process device failed.");
