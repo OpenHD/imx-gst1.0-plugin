@@ -337,7 +337,6 @@ gint get_next_display_buffer (gpointer display, SurfaceBuffer *buffer)
   DisplayHandle *hdisplay = (DisplayHandle*) display;
   GstVideoFrameFlags flags = GST_VIDEO_FRAME_FLAG_NONE;
   PhyMemBlock *memblk = NULL;
-  gint index;
 
   if (hdisplay->first_request < DISPLAY_NUM_BUFFERS) {
     memblk = &hdisplay->memblk[hdisplay->first_request];

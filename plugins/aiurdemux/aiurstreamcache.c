@@ -33,11 +33,10 @@
  * Changelog:
  *
  */
+#include "aiurstreamcache.h"
 
 GST_DEBUG_CATEGORY_EXTERN (aiurdemux_debug);
 #define GST_CAT_DEFAULT aiurdemux_debug
-
-#include "aiurstreamcache.h"
 
 #define WAIT_COND_TIMEOUT(cond, mutex, timeout) \
     do{\
@@ -75,8 +74,6 @@ GST_DEBUG_CATEGORY_EXTERN (aiurdemux_debug);
 
 GST_DEFINE_MINI_OBJECT_TYPE (GstAiurStreamCache, gst_aiur_stream_cache);
 GType aiur_stream_cache_type = 0;
-
-static GTimeVal timeout = { 1, 0 };
 
 static void
 gst_aiur_stream_cache_set_status (GstAiurStreamCache * cache, AIUR_CAHCE_STATUS status);
@@ -284,7 +281,7 @@ gst_aiur_stream_cache_add_buffer (GstAiurStreamCache * cache,
     while ((gst_adapter_available (cache->adapter) > cache->threshold_max)
         && (cache->closed == FALSE)) {
       if (((++trycnt) & 0x1f) == 0x0) {
-        GST_WARNING ("wait push try %d SIZE %d %lld", trycnt,
+        GST_WARNING ("wait push try %d SIZE %" G_GSIZE_FORMAT " %" G_GUINT64_FORMAT, trycnt,
             gst_adapter_available (cache->adapter), cache->threshold_max);
       }
       WAIT_COND_TIMEOUT (&cache->consume_cond, &cache->mutex, 1000000);
@@ -357,7 +354,7 @@ tryseek:
 
 
   if (addr < cache->start) {    /* left */
-    GST_DEBUG ("Flush cache, backward seek addr %lld, cachestart %lld, offset %lld",
+    GST_DEBUG ("Flush cache, backward seek addr %" G_GUINT64_FORMAT ", cachestart %" G_GUINT64_FORMAT ", offset %" G_GUINT64_FORMAT,
         addr, cache->start, cache->offset);
     isfail = 1;
     goto trysendseek;
@@ -383,7 +380,7 @@ tryseek:
 #if 1
 trysendseek:
 
-  GST_INFO ("stream cache try seek to %lld", addr);
+  GST_INFO ("stream cache try seek to %" G_GUINT64_FORMAT, addr);
 
   gst_adapter_clear (cache->adapter);
 
@@ -421,7 +418,6 @@ gst_aiur_stream_cache_read (GstAiurStreamCache * cache, guint64 size,
     char *buffer)
 {
   gint64 readsize = -1;
-  gint retrycnt = 0;
   if (cache == NULL) {
     return readsize;
   }
@@ -463,7 +459,6 @@ try_read:
 
 
 not_enough_bytes:
-  //g_print("not enough %lld, try %d\n", size, retrycnt++);
   gst_aiur_stream_cache_set_status (cache, AIUR_CACHE_STATUS_WAITING);
   WAIT_COND_TIMEOUT (&cache->produce_cond, &cache->mutex, 1000000);
   g_mutex_unlock (&cache->mutex);

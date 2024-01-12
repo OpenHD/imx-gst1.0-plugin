@@ -546,8 +546,6 @@ gint compositor_config_surface (gpointer compositor, gpointer surface, SurfaceIn
 
 gboolean compositor_check_need_clear_display (gpointer compositor)
 {
-  CompositorHandle *hcompositor = (CompositorHandle*) compositor;
-
   return TRUE; 
 }
 

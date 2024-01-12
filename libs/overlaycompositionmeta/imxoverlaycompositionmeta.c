@@ -344,8 +344,11 @@ gint imx_video_overlay_composition_remove_meta(GstBuffer *buffer)
   GstVideoOverlayCompositionMeta *compmeta;
 
   if (gst_buffer_is_writable(buffer)) {
-    while(compmeta = gst_buffer_get_video_overlay_composition_meta(buffer))
+    compmeta = gst_buffer_get_video_overlay_composition_meta(buffer);
+    while(compmeta) {
       gst_buffer_remove_video_overlay_composition_meta(buffer, compmeta);
+      compmeta = gst_buffer_get_video_overlay_composition_meta(buffer);
+    }
   } else {
     GST_WARNING("remove video composition meta failed: buffer not writable\n");
     ret = -1;
@@ -393,7 +396,7 @@ gint imx_video_overlay_composition_composite(
       guint render_w, render_h;
       guint aligned_w, aligned_h;
       Imx2DFrame src = {0}, dst = {0};
-      PhyMemBlock src_mem = {0}, dst_mem = {0};
+      PhyMemBlock src_mem = {0};
       guint i, n_mem;
       GstVideoCropMeta *in_crop = NULL;
       GstBuffer *in_buf;
@@ -528,7 +531,7 @@ gint imx_video_overlay_composition_composite(
           gst_buffer_map(ovbuf, &minfo_in, GST_MAP_READ);
           gst_buffer_map(vcomp->tmp_buf, &minfo_out, GST_MAP_WRITE);
           gint ret = overlay_composition_buffer_convert(
-                        minfo_in.data, minfo_out.data, vmeta->format, t_fmt,
+                        (gchar *)minfo_in.data, (gchar *)minfo_out.data, vmeta->format, t_fmt,
                         vmeta->width, vmeta->height, aligned_w);
           gst_buffer_unmap(ovbuf, &minfo_in);
           gst_buffer_unmap(vcomp->tmp_buf, &minfo_out);

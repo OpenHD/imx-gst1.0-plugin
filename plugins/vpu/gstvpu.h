@@ -41,34 +41,13 @@ typedef struct
   const gchar *mime;
 } VPUMapper;
 
-static VPUMapper vpu_mappers[] = {
-  {VPU_V_HEVC, "video/x-h265"},
-  {VPU_V_VP9, "video/x-vp9"},
-  {VPU_V_VP8, "video/x-vp8"},
-  {VPU_V_VP6, "video/x-vp6-flash"},
-  {VPU_V_AVC, "video/x-h264"},
-  {VPU_V_MPEG2, "video/mpeg, systemstream=(boolean)false, mpegversion=(int){1,2}"},
-  {VPU_V_MPEG4, "video/mpeg, mpegversion=(int)4"},
-  {VPU_V_H263, "video/x-h263"},
-  {VPU_V_SORENSON, "video/x-flash-video, flvversion=(int)1"},
-  {VPU_V_DIVX3, "video/x-divx, divxversion=(int)3"},
-  {VPU_V_DIVX4, "video/x-divx, divxversion=(int)4"},
-  {VPU_V_DIVX56, "video/x-divx, divxversion=(int){5,6}"},
-  {VPU_V_XVID, "video/x-xvid"},
-  {VPU_V_AVS, "video/x-cavs"},
-  {VPU_V_VC1, "video/x-wmv, wmvversion=(int)3, format=(string)WMV3"},
-  {VPU_V_VC1_AP, "video/x-wmv, wmvversion=(int)3, format=(string)WVC1"},
-  {VPU_V_RV, "video/x-pn-realvideo"},
-  {VPU_V_MJPG, "image/jpeg"},
-  {VPU_V_WEBP, "image/webp"},
-  {-1, NULL}
-};
-
 typedef struct {
   VpuMemInfo mem_info;
 	GList * internal_virt_mem;
 	GList * internal_phy_mem;
 } VpuInternalMem;
+
+extern VPUMapper vpu_mappers[];
 
 gint gst_vpu_find_std (GstCaps * caps);
 gboolean gst_vpu_free_internal_mem (VpuInternalMem * vpu_internal_mem);

@@ -192,14 +192,6 @@ static IMXV4l2FmtMap g_imxv4l2fmt_maps_PXP[] = {
   {GST_VIDEO_CAPS_MAKE_BAYER("rggb"), V4L2_PIX_FMT_SRGGB8, GST_VIDEO_FORMAT_UNKNOWN, 8, 0},
 };
 
-static guint g_camera_format[] = {
-  V4L2_PIX_FMT_YUV420,
-  V4L2_PIX_FMT_NV12,
-  V4L2_PIX_FMT_YUYV,
-  V4L2_PIX_FMT_UYVY,
-  0,
-};
-
 static guint g_camera_format_IPU[] = {
   V4L2_PIX_FMT_YUV420,
   V4L2_PIX_FMT_NV12,
@@ -418,7 +410,6 @@ static gint
 imx_pxp_v4l2out_config_input (IMXV4l2Handle *handle, guint fmt, guint w, guint h, IMXV4l2Rect *crop)
 {
   struct v4l2_format v4l2fmt;
-  struct v4l2_rect icrop;
   int out_idx = 1;
 
   if (gst_imx_v4l2_reset_device ((gpointer)handle) < 0)
@@ -873,7 +864,6 @@ gst_imx_v4l2_support_deinterlace (gint type)
 static void
 gst_imx_v4l2output_set_default_res (IMXV4l2Handle *handle)
 {
-  struct fb_var_screeninfo fb_var;
   IMXV4l2Rect rect;
   gint i;
 
@@ -1009,7 +999,7 @@ gst_imx_v4l2capture_set_function (IMXV4l2Handle *handle)
   }
 
   handle->is_tvin = FALSE;
-  if (!strcmp (cap.driver, MXC_V4L2_CAPTURE_NAME)) {
+  if (!strcmp ((char *)cap.driver, MXC_V4L2_CAPTURE_NAME)) {
     struct v4l2_dbg_chip_ident chip;
     if (ioctl(handle->v4l2_fd, VIDIOC_DBG_G_CHIP_IDENT, &chip)) {
       GST_ERROR ("VIDIOC_DBG_G_CHIP_IDENT failed.\n");
@@ -1032,7 +1022,7 @@ gst_imx_v4l2capture_set_function (IMXV4l2Handle *handle)
       GST_ERROR ("can't identify capture sensor type.\n");
       return -1;
     }
-  } else if (!strcmp (cap.driver, PXP_V4L2_CAPTURE_NAME)) {
+  } else if (!strcmp ((char *)cap.driver, PXP_V4L2_CAPTURE_NAME)) {
     struct v4l2_dbg_chip_ident chip;
     if (ioctl(handle->v4l2_fd, VIDIOC_DBG_G_CHIP_IDENT, &chip)) {
       GST_ERROR ("VIDIOC_DBG_G_CHIP_IDENT failed.\n");
@@ -1197,7 +1187,7 @@ gint gst_imx_v4l2_reset_device (gpointer v4l2handle)
     if (!gst_imx_v4l2_support_deinterlace (V4L2_BUF_TYPE_VIDEO_OUTPUT)) {
       while (handle->queued_count) {
         GstBuffer *v4l2_buffer = NULL;
-        GstVideoFrameFlags *flags;
+        GstVideoFrameFlags flags;
         trycnt ++;
 
         if (trycnt >= MAX_TRY_CNT || gst_imx_v4l2_dequeue_gstbuffer (handle, &v4l2_buffer, &flags, TRUE) < 0) {
@@ -1599,7 +1589,7 @@ static void * gst_imx_v4l2_find_buffer(gpointer v4l2handle, PhyMemBlock *memblk)
 
     if (handle->allocated >= MAX_BUFFER) {
       GST_ERROR ("No more v4l2 buffer for allocating.\n");
-      return -1;
+      return NULL;
     }
 
     v4l2buf = &handle->buffer_pair[handle->allocated].v4l2buffer;
@@ -1607,18 +1597,18 @@ static void * gst_imx_v4l2_find_buffer(gpointer v4l2handle, PhyMemBlock *memblk)
     v4l2buf->type = handle->type;
     v4l2buf->memory = handle->memory_mode;
     v4l2buf->index = handle->allocated;
-    v4l2buf->m.userptr = memblk->paddr;
+    v4l2buf->m.userptr = (unsigned long)memblk->paddr;
     v4l2buf->length = memblk->size;
     handle->buffer_pair[handle->allocated].vaddr = memblk->vaddr;
 
     handle->allocated ++;
 
-    GST_DEBUG ("Allocated v4l2buffer(%p), type(%d), index(%d), memblk(%p), vaddr(%p), paddr(%p), size(%d).",
+    GST_DEBUG ("Allocated v4l2buffer(%p), type(%d), index(%d), memblk(%p), vaddr(%p), paddr(%p), size(%" G_GSIZE_FORMAT ").",
         v4l2buf, v4l2buf->type, handle->allocated - 1, memblk, memblk->vaddr, memblk->paddr, memblk->size);
     return v4l2buf;
   }
 
-  GST_ERROR ("Can't find the buffer 0x%08X.", memblk->paddr);
+  GST_ERROR ("Can't find the buffer 0x%p.", memblk->paddr);
   return NULL;
 }
 
@@ -1669,7 +1659,7 @@ gint gst_imx_v4l2_allocate_buffer (gpointer v4l2handle, PhyMemBlock *memblk)
     return -1;
   }
 
-  GST_DEBUG ("Allocated v4l2buffer(%p), type(%d), memblk(%p), paddr(%p), size(%d).",
+  GST_DEBUG ("Allocated v4l2buffer(%p), type(%d), memblk(%p), paddr(%u), size(%d).",
       v4l2buf, v4l2buf->type, memblk, v4l2buf->m.offset, v4l2buf->length);
 
   memblk->size = v4l2buf->length;
@@ -1684,7 +1674,7 @@ gint gst_imx_v4l2_allocate_buffer (gpointer v4l2handle, PhyMemBlock *memblk)
     GST_ERROR ("VIDIOC_QUERYBUF for physical address failed.");
     return -1;
   }
-  memblk->paddr = (guchar*) v4l2buf->m.offset;
+  memblk->paddr = (guint8 *)(guintptr) v4l2buf->m.offset;
 
   // if the queried physical address is 0, that means the m.offset is not
   // a absolute physical address.
@@ -1701,7 +1691,7 @@ gint gst_imx_v4l2_allocate_buffer (gpointer v4l2handle, PhyMemBlock *memblk)
 
   handle->allocated ++;
 
-  GST_DEBUG ("Allocated v4l2buffer(%p), type(%d), index(%d), memblk(%p), vaddr(%p), paddr(%p), size(%d).",
+  GST_DEBUG ("Allocated v4l2buffer(%p), type(%d), index(%d), memblk(%p), vaddr(%p), paddr(%p), size(%" G_GSIZE_FORMAT ").",
       v4l2buf, v4l2buf->type, handle->allocated - 1, memblk, memblk->vaddr, memblk->paddr, memblk->size);
 
   return 0;
@@ -1722,7 +1712,7 @@ gint gst_imx_v4l2_register_buffer (gpointer v4l2handle, PhyMemBlock *memblk)
   v4l2buf->type = handle->type;
   v4l2buf->memory = handle->memory_mode;
   v4l2buf->index = handle->allocated;
-  v4l2buf->m.userptr = memblk->paddr;
+  v4l2buf->m.userptr = (unsigned long)memblk->paddr;
   v4l2buf->length = memblk->size;
   handle->buffer_pair[handle->allocated].vaddr = memblk->vaddr;
 
@@ -1909,8 +1899,8 @@ gint gst_imx_v4l2_queue_gstbuffer (gpointer v4l2handle, GstBuffer *buffer, GstVi
       GST_WARNING ("new buffer (%p) use the same memblk(%p) with queued buffer(%p)",
           buffer, memblk, handle->buffer_pair[v4l2buf->index].gstbuffer);
     }
-    GST_WARNING ("gstbuffer(%p) for (%p) not dequeued yet but queued again, index(%d).",
-        handle->buffer_pair[v4l2buf->index].gstbuffer, index);
+    GST_WARNING ("gstbuffer(%p) not dequeued yet but queued again, index(%d).",
+        handle->buffer_pair[v4l2buf->index].gstbuffer, v4l2buf->index);
   }
 
   if (gst_imx_v4l2_queue_v4l2memblk (v4l2handle, memblk, flags) < 0) {
@@ -1979,7 +1969,7 @@ gint gst_imx_v4l2_dequeue_v4l2memblk (gpointer v4l2handle, PhyMemBlock **memblk,
   handle->queued_count--;
 
   GST_DEBUG ("deque v4l2buffer memblk (%p), index (%d), flags (%d)",
-      v4l2buf.index, handle->buffer_pair[v4l2buf.index].v4l2memblk, *flags);
+      handle->buffer_pair[v4l2buf.index].v4l2memblk, v4l2buf.index, *flags);
 
   return 0;
 }

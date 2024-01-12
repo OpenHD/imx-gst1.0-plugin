@@ -44,6 +44,7 @@
 #include "gstimxcommon.h"
 #include "gstvpuallocator.h"
 #include "gstvpuenc.h"
+#include "gstimx.h"
 
 #define DEFAULT_BITRATE 0
 #if defined(USE_H1_ENC) || defined(USE_VC8000E_ENC)
@@ -690,7 +691,7 @@ gst_vpu_enc_stop (GstVideoEncoder * benc)
 {
   GstVpuEnc *enc = (GstVpuEnc *) benc;
 
-  GST_INFO_OBJECT(enc, "Video encoder frames: %lld time: %lld fps: (%.3f).\n",
+  GST_INFO_OBJECT(enc, "Video encoder frames: %" G_GINT64_FORMAT " time: %" G_GINT64_FORMAT " fps: (%.3f).\n",
       enc->total_frames, enc->total_time, (gfloat)1000000 * enc->total_frames / enc->total_time);
 
   if (!gst_vpu_enc_reset (enc)) {
@@ -713,7 +714,6 @@ gst_vpu_enc_decide_output_caps (GstVideoEncoder * benc)
   GstCaps *thiscaps;
   GstCaps *caps = NULL;
   GstCaps *peercaps = NULL;
-  gboolean result = FALSE;
 
   /* first see what is possible on our source pad */
   thiscaps = gst_pad_query_caps (GST_VIDEO_ENCODER_SRC_PAD (enc), NULL);
@@ -743,7 +743,6 @@ gst_vpu_enc_decide_output_caps (GstVideoEncoder * benc)
       GST_DEBUG_OBJECT (enc, "any caps, we stop");
       /* hmm, still anything, so element can do anything and
        * nego is not needed */
-      result = TRUE;
     } else {
       caps = gst_caps_fixate (caps);
       GST_DEBUG_OBJECT (enc, "fixated to: %" GST_PTR_FORMAT, caps);
@@ -1207,7 +1206,7 @@ gst_vpu_enc_handle_frame (GstVideoEncoder * benc, GstVideoCodecFrame * frame)
 		GstVideoMeta *video_meta;
     PhyMemBlock *input_phys_buffer;
     unsigned char *phys_ptr;
-    unsigned char *phys_ptr_dma[4];
+    unsigned char *phys_ptr_dma[4] = {NULL};
 
 		/* Try to use plane offset and stride information from the video
 		 * metadata if present, since these can be more accurate than
@@ -1231,7 +1230,7 @@ gst_vpu_enc_handle_frame (GstVideoEncoder * benc, GstVideoCodecFrame * frame)
             //query each plane's fd to get right physical address
             if (fd[i] >= 0)
               //workaround incorrect physical address of input buffer returned by phy_addr_from_fd (fd[i])
-              phys_ptr_dma[i] = (phy_addr_from_fd (fd[i]) & 0xFFFFFFFF);
+              phys_ptr_dma[i] = (unsigned char *) (phy_addr_from_fd (fd[i]) & 0xFFFFFFFF);
           }
           input_framebuf.pbufY = phys_ptr_dma[0];
           if (fd[1] >= 0) {
@@ -1264,7 +1263,8 @@ gst_vpu_enc_handle_frame (GstVideoEncoder * benc, GstVideoCodecFrame * frame)
 		/* this is needed for framebuffers registration below */
 		src_stride = plane_strides[0];
 
-		GST_TRACE_OBJECT(enc, "width: %d   height: %d   stride 0: %d   stride 1: %d   offset 0: %d   offset 1: %d   offset 2: %d", GST_VIDEO_INFO_WIDTH(&(enc->state->info)), GST_VIDEO_INFO_HEIGHT(&(enc->state->info)), plane_strides[0], plane_strides[1], plane_offsets[0], plane_offsets[1], plane_offsets[2]);
+		GST_TRACE_OBJECT(enc, "width: %d   height: %d   stride 0: %d   stride 1: %d   offset 0: %" G_GSIZE_FORMAT "   offset 1: %" G_GSIZE_FORMAT "   offset 2: %" G_GSIZE_FORMAT,
+    GST_VIDEO_INFO_WIDTH(&(enc->state->info)), GST_VIDEO_INFO_HEIGHT(&(enc->state->info)), plane_strides[0], plane_strides[1], plane_offsets[0], plane_offsets[1], plane_offsets[2]);
 	}
 
   // Allocate needed physical buffer.
@@ -1329,7 +1329,6 @@ gst_vpu_enc_handle_frame (GstVideoEncoder * benc, GstVideoCodecFrame * frame)
 
 	{
 		gsize output_buffer_offset = 0;
-		gboolean frame_finished = FALSE;
 
 		do
     {
@@ -1348,7 +1347,7 @@ gst_vpu_enc_handle_frame (GstVideoEncoder * benc, GstVideoCodecFrame * frame)
       }
 
       enc->total_time += g_get_monotonic_time () - start_time;
-      GST_DEBUG_OBJECT(enc, "encoder consume time: %lld\n", \
+      GST_DEBUG_OBJECT(enc, "encoder consume time: %" G_GINT64_FORMAT "\n", \
           g_get_monotonic_time () - start_time);
 
       if (enc_enc_param.eOutRetCode & VPU_ENC_OUTPUT_SEQHEADER) {
@@ -1369,7 +1368,7 @@ gst_vpu_enc_handle_frame (GstVideoEncoder * benc, GstVideoCodecFrame * frame)
       }
 
       if (enc_enc_param.eOutRetCode & VPU_ENC_OUTPUT_DIS) {
-        GST_LOG_OBJECT(enc, "processing output data: %u bytes, output buffer offset %u", \
+        GST_LOG_OBJECT(enc, "processing output data: %u bytes, output buffer offset %" G_GSIZE_FORMAT, \
             enc_enc_param.nOutOutputSize, output_buffer_offset);
 
         gst_buffer_unmap (output_buffer, &minfo);
@@ -1386,7 +1385,6 @@ gst_vpu_enc_handle_frame (GstVideoEncoder * benc, GstVideoCodecFrame * frame)
         frame->dts = frame->pts;
         gst_video_encoder_finish_frame(benc, frame);
         output_buffer = NULL;
-        frame_finished = TRUE;
 
         if (!(enc_enc_param.eOutRetCode & VPU_ENC_INPUT_USED))
           GST_WARNING_OBJECT(enc, "frame finished, but VPU did not report the input as used");

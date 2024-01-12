@@ -224,7 +224,6 @@ static GstsutilsGroup * aiur_core_find_caps_group(GstsutilsEntry *entry,GstCaps 
   int index = 0;
   char* mime = NULL;
   GstsutilsGroup *group=NULL;
-  void *dlhandle = NULL;
   GstCaps * super_caps = NULL;
   gboolean found = FALSE;
   group_count = gstsutils_get_group_count(entry);
@@ -273,7 +272,6 @@ aiur_core_create_interface_from_caps (GstCaps * caps)
   GstsutilsGroup * group;
   gchar * libname = NULL;
   gchar * libname2 = NULL;
-  gchar * temp_name;
   gboolean find = TRUE;
   void *dlhandle = NULL;
 

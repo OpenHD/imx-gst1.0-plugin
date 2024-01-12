@@ -365,7 +365,7 @@ static gint imx_pxp_check_frame_paddr (Imx2DFrame *dst, Imx2DFrame *src)
       return -1;
     }
     if (paddr) {
-      src->mem->paddr = paddr;
+      src->mem->paddr = (guint8 *)paddr;
     } else {
       GST_ERROR ("Can't get physical address.");
       return -1;
@@ -375,7 +375,7 @@ static gint imx_pxp_check_frame_paddr (Imx2DFrame *dst, Imx2DFrame *src)
   if (!src->mem->user_data && src->fd[1] >= 0) {
     paddr = phy_addr_from_fd (src->fd[1]);
     if (paddr) {
-      src->mem->user_data = paddr;
+      src->mem->user_data = (gpointer *)paddr;
     } else {
       GST_ERROR ("Can't get physical address for second plane");
       return -1;
@@ -385,7 +385,7 @@ static gint imx_pxp_check_frame_paddr (Imx2DFrame *dst, Imx2DFrame *src)
   if (!dst->mem->paddr) {
     paddr = phy_addr_from_fd (dst->fd[0]);
     if (paddr) {
-      dst->mem->paddr = paddr;
+      dst->mem->paddr = (guint8 *)paddr;
     } else {
       GST_ERROR ("Can't get physical address.");
       return -1;
@@ -454,7 +454,6 @@ static gint imx_pxp_convert(Imx2DDevice *device,
 static gint imx_pxp_blend_without_alpha(Imx2DDevice *device,
                                         Imx2DFrame *dst, Imx2DFrame *src)
 {
-  gint ret = 0;
   guint BPP = 4;
   const PxpFmtMap *fmt_map = NULL;
 
@@ -577,7 +576,7 @@ static gint imx_pxp_overlay(Imx2DDevice *device,
     B = (pxp->background & 0x00FF0000) >> 16;
     A = (pxp->background & 0xFF000000) >> 24;
 
-    gchar *p = pxp->dummy.vaddr;
+    gchar *p = (gchar *)pxp->dummy.vaddr;
     gint i;
     for (i = 0; i < 16*16; i++) {
       p[4 * i + 0] = B;
@@ -983,7 +982,6 @@ static Imx2DDeinterlaceMode imx_pxp_get_deinterlace (Imx2DDevice* device)
 
 static gint imx_pxp_get_capabilities (Imx2DDevice* device)
 {
-  void *pxp_handle = NULL;
   gint capabilities = 0;
 
   capabilities = IMX_2D_DEVICE_CAP_SCALE | IMX_2D_DEVICE_CAP_CSC \

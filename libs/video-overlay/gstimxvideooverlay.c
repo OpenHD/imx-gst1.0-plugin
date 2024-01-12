@@ -249,8 +249,6 @@ gst_imx_video_overlay_expose (ImxVideoOverlay * imxxoverlay)
 gboolean
 gst_imx_video_overlay_set_render_rectangle (ImxVideoOverlay * imxxoverlay,
                                 gint x, gint y, gint width, gint height) {
-  GstVideoRectangle rect = {0};
-  gint w, h;
   GST_DEBUG ("SET Render Rect : %d:%d:%d:%d", x, y, width, height);
 
   if (!imxxoverlay || !imxxoverlay->parent ||

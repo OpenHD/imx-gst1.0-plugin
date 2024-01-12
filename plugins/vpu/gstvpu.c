@@ -21,6 +21,29 @@
 #include <gst/allocators/gstphysmemory.h>
 #include "gstimxcommon.h"
 
+VPUMapper vpu_mappers[] = {
+  {VPU_V_HEVC, "video/x-h265"},
+  {VPU_V_VP9, "video/x-vp9"},
+  {VPU_V_VP8, "video/x-vp8"},
+  {VPU_V_VP6, "video/x-vp6-flash"},
+  {VPU_V_AVC, "video/x-h264"},
+  {VPU_V_MPEG2, "video/mpeg, systemstream=(boolean)false, mpegversion=(int){1,2}"},
+  {VPU_V_MPEG4, "video/mpeg, mpegversion=(int)4"},
+  {VPU_V_H263, "video/x-h263"},
+  {VPU_V_SORENSON, "video/x-flash-video, flvversion=(int)1"},
+  {VPU_V_DIVX3, "video/x-divx, divxversion=(int)3"},
+  {VPU_V_DIVX4, "video/x-divx, divxversion=(int)4"},
+  {VPU_V_DIVX56, "video/x-divx, divxversion=(int){5,6}"},
+  {VPU_V_XVID, "video/x-xvid"},
+  {VPU_V_AVS, "video/x-cavs"},
+  {VPU_V_VC1, "video/x-wmv, wmvversion=(int)3, format=(string)WMV3"},
+  {VPU_V_VC1_AP, "video/x-wmv, wmvversion=(int)3, format=(string)WVC1"},
+  {VPU_V_RV, "video/x-pn-realvideo"},
+  {VPU_V_MJPG, "image/jpeg"},
+  {VPU_V_WEBP, "image/webp"},
+  {-1, NULL}
+};
+
 gint
 gst_vpu_find_std (GstCaps * caps)
 {
@@ -114,8 +137,8 @@ gst_vpu_register_frame_buffer (GList * gstbuffer_in_vpudec, \
 
   for (i=0; i<g_list_length (gstbuffer_in_vpudec); i++) {
     buffer = g_list_nth_data (gstbuffer_in_vpudec, i);
-    GST_DEBUG ("gstbuffer index: %d get from list: %x\n", \
-        i, buffer);
+    GST_DEBUG ("gstbuffer index: %d get from list: %" G_GUINTPTR_FORMAT,
+        i, (guintptr)buffer);
     vpu_frame = &(vpuframebuffers[i]);
 
     if (IS_HANTRO()) {
@@ -140,7 +163,7 @@ gst_vpu_register_frame_buffer (GList * gstbuffer_in_vpudec, \
     }
 
     if (gst_is_phys_memory (gst_buffer_peek_memory (buffer, 0))) {
-      vpu_frame->pbufY = gst_phys_memory_get_phys_addr(gst_buffer_peek_memory (buffer, 0));
+      vpu_frame->pbufY = (unsigned char*) gst_phys_memory_get_phys_addr(gst_buffer_peek_memory (buffer, 0));
       GST_DEBUG ("video buffer phys add: %p", vpu_frame->pbufY);
     } else {
       mem_block = gst_buffer_query_phymem_block (buffer);

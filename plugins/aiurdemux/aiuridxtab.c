@@ -215,13 +215,13 @@ aiurdemux_import_idx_table (gchar * filename)
       goto fail;
     }
 
-    crc = calcCRC16 (index, idxtable->info.size);
+    crc = calcCRC16 ((unsigned char *)index, idxtable->info.size);
 
     if (crc != idxtable->crc) {
       g_free (index);
       goto fail;
     }
-    idxtable->idx = index;
+    idxtable->idx = (unsigned char *)index;
   }
 
   if (fd) {

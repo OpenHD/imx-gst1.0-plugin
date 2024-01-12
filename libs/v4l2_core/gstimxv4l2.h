@@ -55,5 +55,6 @@ gint gst_imx_v4l2_queue_v4l2memblk (gpointer v4l2handle, PhyMemBlock *memblk, Gs
 gint gst_imx_v4l2_dequeue_v4l2memblk (gpointer v4l2handle, PhyMemBlock **memblk, GstVideoFrameFlags * flags, gboolean drain);
 gint gst_imx_v4l2_queue_gstbuffer (gpointer v4l2handle, GstBuffer *buffer, GstVideoFrameFlags flags);
 gint gst_imx_v4l2_dequeue_gstbuffer (gpointer v4l2handle, GstBuffer **buffer, GstVideoFrameFlags * flags, gboolean drain);
+gint gst_imx_v4l2_config_flip (gpointer v4l2handle, guint flip);
 
 #endif

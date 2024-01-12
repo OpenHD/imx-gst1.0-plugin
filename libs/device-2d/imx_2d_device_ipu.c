@@ -22,6 +22,7 @@
 #include <sys/mman.h>
 #include <linux/ipu.h>
 #include "imx_2d_device.h"
+#include <unistd.h>
 
 #define IPU_DEVICE_NAME "/dev/mxc_ipu"
 

@@ -229,7 +229,7 @@ aiurcontent_callback_seek_pull (FslFileHandle handle, int64 offset,
 
   if ((newoffset < 0) || ((content->length > 0)
           && (newoffset > content->length))) {
-    GST_ERROR ("Failed to seek. Target (%lld) exceeds the file range (%lld)",
+    GST_ERROR ("Failed to seek. Target (%lld) exceeds the file range (%" G_GINT64_FORMAT ")",
         newoffset, content->length);
     ret = -1;
   } else {
@@ -377,7 +377,7 @@ aiurcontent_callback_seek_push (FslFileHandle handle, int64 offset,
 
     if ((newoffset < 0) || ((content->length > 0)
             && (newoffset > content->length))) {
-      GST_ERROR ("Failed to seek. Target (%lld) exceeds the file range (%lld)",
+      GST_ERROR ("Failed to seek. Target (%lld) exceeds the file range (%" G_GINT64_FORMAT ")",
           newoffset, content->length);
       return -1;
     } else {
@@ -447,9 +447,6 @@ aiurcontent_callback_request_buffer (uint32 stream_idx, uint32 * size,
   uint8 *buffer = NULL;
   GstBuffer *gstbuf = NULL;
   GstMapInfo map;
-
-  AiurContent *pContent = (AiurContent *) parserContext;
-  //AiurDemuxStream *stream = aiurdemux_trackidx_to_stream (demux, stream_idx);
 
   if((*size) >= 100000000){
       GST_ERROR("request buffer failed!!!");

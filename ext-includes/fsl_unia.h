@@ -245,7 +245,7 @@ typedef enum
 typedef struct
 {
     void* (*Calloc) (uint32 numElements, uint32 size);
-    void* (*Malloc) (size_t size);
+    void* (*Malloc) (uint32 size);
     void  (*Free) (void * ptr);
     void* (*ReAlloc)(void * ptr, uint32 size);
 }UniACodecMemoryOps; /* callback operation callback table */

@@ -123,7 +123,7 @@ static const G2dFmtMap * imx_g2d_get_format(GstVideoFormat format)
     map++;
   };
 
-  GST_ERROR ("g2d : format (%x) is not supported.",
+  GST_ERROR ("g2d : format (%s) is not supported.",
               gst_video_format_to_string(format));
 
   return NULL;
@@ -182,15 +182,15 @@ imx_g2d_alloc_mem(Imx2DDevice *device, PhyMemBlock *memblk)
 
   pbuf = g2d_alloc (memblk->size, 0);
   if (!pbuf) {
-    GST_ERROR("G2D allocate %u bytes memory failed: %s",
+    GST_ERROR("G2D allocate %" G_GSIZE_FORMAT "bytes memory failed: %s",
               memblk->size, strerror(errno));
     return -1;
   }
 
-  memblk->vaddr = (guchar*) pbuf->buf_vaddr;
-  memblk->paddr = (guchar*) pbuf->buf_paddr;
+  memblk->vaddr = (guint8 *) pbuf->buf_vaddr;
+  memblk->paddr = (guint8 *)(guintptr) pbuf->buf_paddr;
   memblk->user_data = (gpointer) pbuf;
-  GST_DEBUG("G2D allocated memory (%p)", memblk->paddr);
+  GST_DEBUG("G2D allocated memory (%p)", (guchar *)memblk->paddr);
 
   return 0;
 }
@@ -227,8 +227,8 @@ static gint imx_g2d_copy_mem(Imx2DDevice* device, PhyMemBlock *dst_mem,
     GST_ERROR ("g2d_alloc failed.");
     return -1;
   }
-  dst_mem->vaddr = (gchar*) pbuf->buf_vaddr;
-  dst_mem->paddr = (gchar*) pbuf->buf_paddr;
+  dst_mem->vaddr = (guint8 *) pbuf->buf_vaddr;
+  dst_mem->paddr = (guint8 *)(guintptr) pbuf->buf_paddr;
   dst_mem->user_data = (gpointer) pbuf;
 
   Imx2DDeviceG2d *g2d = (Imx2DDeviceG2d *) (device->priv);
@@ -236,11 +236,11 @@ static gint imx_g2d_copy_mem(Imx2DDevice* device, PhyMemBlock *dst_mem,
 
   src.buf_handle = NULL;
   src.buf_vaddr = src_mem->vaddr + offset;
-  src.buf_paddr = (gint)(src_mem->paddr + offset);
+  src.buf_paddr = (gintptr)(src_mem->paddr + offset);
   src.buf_size = src_mem->size - offset;
   dst.buf_handle = NULL;
   dst.buf_vaddr = dst_mem->vaddr;
-  dst.buf_paddr = (gint)(dst_mem->paddr);
+  dst.buf_paddr = (gintptr)(dst_mem->paddr);
   dst.buf_size = dst_mem->size;
 
   if (size > dst.buf_size)
@@ -249,8 +249,8 @@ static gint imx_g2d_copy_mem(Imx2DDevice* device, PhyMemBlock *dst_mem,
   g2d_copy (g2d_handle, &dst, &src, size);
   g2d_finish(g2d_handle);
 
-  GST_DEBUG ("G2D copy from vaddr (%p), paddr (%p), size (%d) to "
-      "vaddr (%p), paddr (%p), size (%d)",
+  GST_DEBUG ("G2D copy from vaddr (%p), paddr (%p), size (%" G_GSIZE_FORMAT ") to "
+      "vaddr (%p), paddr (%p), size (%" G_GSIZE_FORMAT ")",
       src_mem->vaddr, src_mem->paddr, src_mem->size,
       dst_mem->vaddr, dst_mem->paddr, dst_mem->size);
 
@@ -272,11 +272,11 @@ static gint imx_g2d_frame_copy(Imx2DDevice *device,
 
   src.buf_handle = NULL;
   src.buf_vaddr = (void*)(from->vaddr);
-  src.buf_paddr = (gint)(from->paddr);
+  src.buf_paddr = (gintptr)(from->paddr);
   src.buf_size = from->size;
   dst.buf_handle = NULL;
   dst.buf_vaddr = (void *)(to->vaddr);
-  dst.buf_paddr = (gint)(to->paddr);
+  dst.buf_paddr = (gintptr)(to->paddr);
   dst.buf_size = to->size;
 
   ret = g2d_copy (g2d_handle, &dst, &src, dst.buf_size);
@@ -354,18 +354,18 @@ static gint imx_g2d_set_src_plane(struct g2d_surface *g2d_src, gchar *paddr)
   switch(g2d_src->format) {
     case G2D_I420:
     case G2D_YV12:
-      g2d_src->planes[0] = (gint)(paddr);
-      g2d_src->planes[1] = (gint)(paddr + g2d_src->width * g2d_src->height);
+      g2d_src->planes[0] = (gintptr)(paddr);
+      g2d_src->planes[1] = (gintptr)(paddr + g2d_src->width * g2d_src->height);
       g2d_src->planes[2] = g2d_src->planes[1]+g2d_src->width*g2d_src->height/4;
       break;
     case G2D_NV12:
     case G2D_NV21:
-      g2d_src->planes[0] = (gint)(paddr);
-      g2d_src->planes[1] = (gint)(paddr + g2d_src->width * g2d_src->height);
+      g2d_src->planes[0] = (gintptr)(paddr);
+      g2d_src->planes[1] = (gintptr)(paddr + g2d_src->width * g2d_src->height);
       break;
     case G2D_NV16:
-      g2d_src->planes[0] = (gint)(paddr);
-      g2d_src->planes[1] = (gint)(paddr + g2d_src->width * g2d_src->height);
+      g2d_src->planes[0] = (gintptr)(paddr);
+      g2d_src->planes[1] = (gintptr)(paddr + g2d_src->width * g2d_src->height);
       break;
 
     case G2D_RGB565:
@@ -381,7 +381,7 @@ static gint imx_g2d_set_src_plane(struct g2d_surface *g2d_src, gchar *paddr)
     case G2D_UYVY:
     case G2D_YUYV:
     case G2D_YVYU:
-      g2d_src->planes[0] = (gint)(paddr);
+      g2d_src->planes[0] = (gintptr)(paddr);
       break;
     default:
       GST_ERROR ("G2D: not supported format.");
@@ -425,7 +425,7 @@ static gint imx_g2d_blit(Imx2DDevice *device,
       goto err;
     }
     if (paddr) {
-      src->mem->paddr = paddr;
+      src->mem->paddr = (guint8 *)paddr;
     } else {
       GST_ERROR ("Can't get physical address.");
       ret = -1;
@@ -435,7 +435,7 @@ static gint imx_g2d_blit(Imx2DDevice *device,
   if (!dst->mem->paddr) {
     paddr = phy_addr_from_fd (dst->fd[0]);
     if (paddr) {
-      dst->mem->paddr = paddr;
+      dst->mem->paddr = (guint8 *)paddr;
     } else {
       GST_ERROR ("Can't get physical address.");
       ret = -1;
@@ -467,17 +467,19 @@ static gint imx_g2d_blit(Imx2DDevice *device,
   if (g2d->src.base.bottom > g2d->src.base.height)
     g2d->src.base.bottom = g2d->src.base.height;
 
-  if (imx_g2d_set_src_plane (&g2d->src.base, src->mem->paddr) < 0) {
+  if (imx_g2d_set_src_plane (&g2d->src.base, (gchar *)src->mem->paddr) < 0) {
     ret = -1;
     goto err;
   }
 
   if (src->fd[1] >= 0)
   {
-    if (!src->mem->user_data)
-      src->mem->user_data = g2d->src.base.planes[1] = phy_addr_from_fd (src->fd[1]);
+    if (!src->mem->user_data) {
+      src->mem->user_data = (gpointer *)phy_addr_from_fd (src->fd[1]);
+      g2d->src.base.planes[1] = (gintptr)src->mem->user_data;
+    }
     else
-      g2d->src.base.planes[1] = src->mem->user_data;
+      g2d->src.base.planes[1] = (gintptr)src->mem->user_data;
   }
   switch (src->interlace_type) {
     case IMX_2D_INTERLACE_INTERLEAVED:
@@ -494,9 +496,9 @@ static gint imx_g2d_blit(Imx2DDevice *device,
 
   // Set output
   g2d->dst.base.global_alpha = dst->alpha;
-  g2d->dst.base.planes[0] = (gint)(dst->mem->paddr);
+  g2d->dst.base.planes[0] = (gintptr)(dst->mem->paddr);
   if (g2d->dst.base.format == G2D_NV12)
-    g2d->dst.base.planes[1] = (gint)(dst->mem->paddr + g2d->dst.base.width * g2d->dst.base.height);
+    g2d->dst.base.planes[1] = (gintptr)(dst->mem->paddr + g2d->dst.base.width * g2d->dst.base.height);
   g2d->dst.base.left = dst->crop.x;
   g2d->dst.base.top = dst->crop.y;
   g2d->dst.base.right = dst->crop.x + dst->crop.w;
@@ -693,7 +695,7 @@ static gint imx_g2d_fill_color(Imx2DDevice *device, Imx2DFrame *dst,
   if (!dst->mem->paddr) {
     paddr = phy_addr_from_fd (dst->fd[0]);
     if (paddr) {
-      dst->mem->paddr = paddr;
+      dst->mem->paddr = (guint8 *)paddr;
     } else {
       GST_ERROR ("Can't get physical address.");
       return -1;
@@ -702,7 +704,7 @@ static gint imx_g2d_fill_color(Imx2DDevice *device, Imx2DFrame *dst,
   GST_DEBUG ("dst paddr: %p", dst->mem->paddr);
 
   g2d->dst.base.clrcolor = RGBA8888;
-  g2d->dst.base.planes[0] = (gint)(dst->mem->paddr);
+  g2d->dst.base.planes[0] = (gintptr)(dst->mem->paddr);
   g2d->dst.base.left = 0;
   g2d->dst.base.top = 0;
   g2d->dst.base.right = g2d->dst.base.width;

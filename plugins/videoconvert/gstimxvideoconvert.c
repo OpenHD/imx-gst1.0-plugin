@@ -192,7 +192,6 @@ static void gst_imx_video_convert_get_property (GObject * object,
 static void gst_imx_video_convert_finalize (GObject * object)
 {
   GstImxVideoConvert *imxvct = (GstImxVideoConvert *) (object);
-  GstStructure *config;
   GstImxVideoConvertClass *klass =
         (GstImxVideoConvertClass *) G_OBJECT_GET_CLASS (imxvct);
 
@@ -592,10 +591,6 @@ static GstCaps* imx_video_convert_fixate_caps(GstBaseTransform *transform,
   GstStructure *ins, *outs;
   GValue const *from_par, *to_par;
   GValue fpar = { 0, }, tpar = { 0, };
-  const gchar *in_format;
-  const GstVideoFormatInfo *in_info, *out_info = NULL;
-  gint min_loss = G_MAXINT32;
-  guint i, capslen;
 
   g_return_val_if_fail(gst_caps_is_fixed (caps), othercaps);
 
@@ -1160,11 +1155,12 @@ static gboolean imx_video_convert_decide_allocation(GstBaseTransform *transform,
   size = MAX(size, vinfo.size);
   size = PAGE_ALIGN(size);
 
-  if (max == 0)
+  if (max == 0) {
     if (min < 3)
       max = min = 3;
     else
       max = min;
+  }
 
   /* downstream doesn't provide a pool or the pool has no ability to allocate
    * physical memory buffers, we need create new pool */
@@ -1387,7 +1383,7 @@ static GstFlowReturn imx_video_convert_transform(GstBaseTransform * trans, GstBu
   GstVideoMeta *video_meta = gst_buffer_get_video_meta (inbuf);
   GstVideoInfo in_info;
   GstDmabufMeta *dmabuf_meta;
-  gint64 drm_modifier = 0;
+  guint64 drm_modifier = 0;
 
   if (!device)
     return GST_FLOW_ERROR;
@@ -1541,8 +1537,8 @@ static GstFlowReturn imx_video_convert_transform(GstBaseTransform * trans, GstBu
     src.info.stride = in_info.stride[0];
   }
   if (GST_VIDEO_FORMAT_INFO_IS_TILED(in_info.finfo)) {
-    gint ws = GST_VIDEO_FORMAT_INFO_TILE_WS (in_info.finfo);
-    src.info.stride = GST_VIDEO_TILE_X_TILES(src.info.stride) << ws;
+    gint ws = GST_VIDEO_FORMAT_INFO_TILE_STRIDE (in_info.finfo, 0);
+    src.info.stride = GST_VIDEO_TILE_X_TILES(src.info.stride) * ws;
   }
 
   dmabuf_meta = gst_buffer_get_dmabuf_meta (inbuf);
@@ -1556,7 +1552,7 @@ static GstFlowReturn imx_video_convert_transform(GstBaseTransform * trans, GstBu
     dmabuf_meta->drm_modifier = 0;
   }
 
-  GST_INFO_OBJECT (imxvct, "buffer modifier type %d", drm_modifier);
+  GST_INFO_OBJECT (imxvct, "buffer modifier type %" G_GUINT64_FORMAT, drm_modifier);
 
   switch (GST_VIDEO_FORMAT_INFO_FORMAT(in_info.finfo)) {
   case GST_VIDEO_FORMAT_NV12_8L128:
@@ -1697,7 +1693,7 @@ static GstFlowReturn imx_video_convert_transform(GstBaseTransform * trans, GstBu
   if (!src.mem->paddr)
     src.mem->paddr = _get_cached_phyaddr (gst_buffer_peek_memory (input_buf, 0));
   if (!src.mem->user_data && src.fd[1] >= 0)
-    src.mem->user_data = _get_cached_phyaddr (gst_buffer_peek_memory (input_buf, 1));
+    src.mem->user_data = (gpointer *)_get_cached_phyaddr (gst_buffer_peek_memory (input_buf, 1));
   if (!dst.mem->paddr)
     dst.mem->paddr = _get_cached_phyaddr (gst_buffer_peek_memory (outbuf, 0));
 
@@ -1708,7 +1704,7 @@ static GstFlowReturn imx_video_convert_transform(GstBaseTransform * trans, GstBu
     if (!_get_cached_phyaddr (gst_buffer_peek_memory (input_buf, 0)))
       _set_cached_phyaddr (gst_buffer_peek_memory (input_buf, 0), src.mem->paddr);
     if (src.fd[1] >= 0 && !_get_cached_phyaddr (gst_buffer_peek_memory (input_buf, 1)))
-      _set_cached_phyaddr (gst_buffer_peek_memory (input_buf, 1), src.mem->user_data);
+      _set_cached_phyaddr (gst_buffer_peek_memory (input_buf, 1), (guint8 *)src.mem->user_data);
     if (!_get_cached_phyaddr (gst_buffer_peek_memory (outbuf, 0)))
       _set_cached_phyaddr (gst_buffer_peek_memory (outbuf, 0), dst.mem->paddr);
 

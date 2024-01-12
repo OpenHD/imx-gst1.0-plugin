@@ -23,7 +23,7 @@ reg_inst_file=beep_registry_1.0.arm.cf
 endif
 
 # headers we need but don't want installed
-noinst_HEADERS =  beepregistry.h beepdec.h
+noinst_HEADERS =  beepregistry.h beepdec.h beeptypefind.h
 data_DATA = $(reg_inst_file)
 
 EXTRA_DIST = $(registry_file)

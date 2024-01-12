@@ -1,4 +1,9 @@
 /*
+ * Copyright 2024 NXP
+ *
+ */
+
+/*
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License as published by the Free Software Foundation; either
@@ -15,44 +20,24 @@
 */
 
 /*
- * Copyright (C) 2010-2011, 2014 Freescale Semiconductor, Inc. All rights reserved.
- * Copyright 2018 NXP
+ * Module Name:    beeptypefind.h
  *
- */
-
-
-
-/*
- * Module Name:    aiur.c
- *
- * Description:    Registration of unified parser gstreamer plugin
+ * Description:    Head file of unified parser core functions
  *
  * Portability:    This code is written for Linux OS and Gstreamer
  */
 
 /*
- * Changelog: 
+ * Changelog:
  *
  */
-#ifdef HAVE_CONFIG_H
-#include <config.h>
-#endif
 
-#include "aiurdemux.h"
-#include "gstimxcommon.h"
-#include "aiurtypefind.h"
+#ifndef __BEEPTYPEFIND_H__
+#define __BEEPTYPEFIND_H__
+#include <gst/gst.h>
 
-static gboolean
-plugin_init (GstPlugin * plugin)
-{
-  aiur_register_external_typefinders (plugin);
-  //gst_aiur_stream_cache_get_type ();
-  if (!gst_element_register
-      (plugin, "aiurdemux", (GST_RANK_PRIMARY+1), GST_TYPE_AIURDEMUX)){
-    return FALSE;
-  }
-  return TRUE;
 
-}
+gboolean beep_register_external_typefinders (GstPlugin * plugin);
 
-IMX_GST_PLUGIN_DEFINE (aiurdemux, "aiur universal demux", plugin_init);
+
+#endif /* __BEEPREGISTRY_H__ */

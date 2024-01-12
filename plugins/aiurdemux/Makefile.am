@@ -24,7 +24,7 @@ reg_inst_file=aiur_registry_1.0.arm.cf
 endif
 
 # headers we need but don't want installed
-noinst_HEADERS =  aiurregistry.h aiurdemux.h aiurstreamcache.h aiuridxtab.h aiurcontent.h
+noinst_HEADERS =  aiurregistry.h aiurdemux.h aiurstreamcache.h aiuridxtab.h aiurcontent.h aiurtypefind.h
 data_DATA = $(reg_inst_file)
 
 EXTRA_DIST = $(registry_file)

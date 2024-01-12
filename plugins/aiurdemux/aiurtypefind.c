@@ -34,8 +34,9 @@
   *
   * Portability:    This code is written for Linux OS and Gstreamer
   */
-#include <gst/gst.h>
+
 #include <string.h>
+#include "aiurtypefind.h"
 
 typedef void (*AiurTypeFindFunc) (GstTypeFind *, gpointer);
 
@@ -65,7 +66,7 @@ aiur_register_external_typefinders (GstPlugin * plugin)
   AiurExternalTypeFind *t = g_aiurextypefinders;
   while (t->name) {
     GstCaps *caps;
-    caps = gst_caps_new_simple(t->mime, NULL);
+    caps = gst_caps_new_empty_simple (t->mime);
     ret &= gst_type_find_register (plugin, t->name, GST_RANK_PRIMARY,
         t->func, t->exts, caps, NULL, NULL);
     gst_caps_unref(caps);
@@ -90,7 +91,7 @@ static gboolean
 ebml_check_header (GstTypeFind * tf, const gchar * doctype, int doctype_len)
 {
   /* 4 bytes for EBML ID, 1 byte for header length identifier */
-  guint8 *data = gst_type_find_peek (tf, 0, 4 + 1);
+  const guint8 *data = gst_type_find_peek (tf, 0, 4 + 1);
   gint len_mask = 0x80, size = 1, n = 1, total;
 
   if (!data)

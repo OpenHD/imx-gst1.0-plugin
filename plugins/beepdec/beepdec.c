@@ -51,9 +51,9 @@ GST_DEBUG_CATEGORY (beep_dec_debug);
 
 static gstsutils_property beep_property[]=
 {
-    {"tolerance", G_TYPE_UINT64, gst_audio_decoder_set_tolerance},
-    {"min-latency", G_TYPE_UINT64, gst_audio_decoder_set_min_latency},
-    {"plc", G_TYPE_BOOLEAN, gst_audio_decoder_set_plc}
+    {"tolerance", G_TYPE_UINT64, (gstsutils_set_func) gst_audio_decoder_set_tolerance},
+    {"min-latency", G_TYPE_UINT64, (gstsutils_set_func) gst_audio_decoder_set_min_latency},
+    {"plc", G_TYPE_BOOLEAN, (gstsutils_set_func) gst_audio_decoder_set_plc}
 };
 
 
@@ -149,8 +149,8 @@ static gboolean beep_dec_set_format(GstAudioDecoder *dec, GstCaps *caps);
 
 static gboolean beep_dec_start (GstAudioDecoder * dec);
 static gboolean beep_dec_stop (GstAudioDecoder * dec);
-static GstFlowReturn beep_dec_parse_and_decode (GstAudioDecoder * dec,
-    GstAdapter *adapter,gint *offset, gint *length);
+// static GstFlowReturn beep_dec_parse_and_decode (GstAudioDecoder * dec,
+//     GstAdapter *adapter,gint *offset, gint *length);
 static GstFlowReturn beep_dec_handle_frame (GstAudioDecoder * dec,
     GstBuffer * buffer);
 static void beep_dec_flush (GstAudioDecoder * dec, gboolean hard);
@@ -206,7 +206,7 @@ static void
 gst_beep_dec_init (GstBeepDec * dec)
 {
     gst_audio_decoder_set_tolerance(GST_AUDIO_DECODER_CAST(dec),400000000);
-    gstsutils_load_default_property(beep_property,GST_AUDIO_DECODER_CAST(dec),
+    gstsutils_load_default_property(beep_property,(GstObject*)GST_AUDIO_DECODER_CAST(dec),
         FSL_GST_CONF_DEFAULT_FILENAME,"beepdec");
 
 GST_LOG("gst_beep_dec_init \n");
@@ -261,7 +261,7 @@ static gboolean beep_dec_set_init_parameter(GstBeepDec * beep_dec,
     UniACodecParameter parameter;
     gint intvalue;
     gboolean framed = FALSE;
-    gchar * stream_format;
+    const gchar * stream_format;
     gboolean ret = FALSE;
     BeepCoreInterface *IDecoder = NULL;
     UniACodec_Handle handle;
@@ -353,7 +353,7 @@ static gboolean beep_dec_set_init_parameter(GstBeepDec * beep_dec,
                 gst_buffer_map(codec_data, &map, GST_MAP_READ);
                 GST_INFO ("Set codec_data %" GST_PTR_FORMAT, codec_data);
                 parameter.codecData.size = map.size;
-                parameter.codecData.buf = map.data;
+                parameter.codecData.buf = (char *) map.data;
                 rc = IDecoder->setDecoderPara(handle,UNIA_CODEC_DATA, &parameter);
                 gst_buffer_unmap(codec_data, &map);
                 if (rc != ACODEC_SUCCESS) {
@@ -667,7 +667,6 @@ static void beep_dec_handle_output_changed(GstBeepDec *beepdec)
     UniACodec_Handle handle;
     UniACodecParameter parameter = { 0 };
     GstAudioInfo info;
-    GstAudioChannelPosition *pos = NULL;
     GstTagList *list = NULL;
 
     do{
@@ -795,7 +794,6 @@ static GstFlowReturn beep_dec_handle_frame (GstAudioDecoder * dec,
     GstBuffer * codec_data = NULL;
     uint32 adapter_size = 0;
     GstMapInfo map;
-    gboolean twice = FALSE;
     beepdec = GST_BEEP_DEC (dec);
     gboolean sent = FALSE;
     if(!beepdec)
@@ -831,9 +829,10 @@ static GstFlowReturn beep_dec_handle_frame (GstAudioDecoder * dec,
 
     GST_LOG_OBJECT (beepdec,"handle_frame [%d] BEGIN size=%d",beepdec->in_cnt,inbuf_size);
 
-
+#if 0
     if(!strcmp(IDecoder->name,"mp3"))
         twice = TRUE;
+#endif
 
     if(!strcmp(IDecoder->name,"vorbis") && !beepdec->set_codec_data){
         if(beepdec->frame_cnt < VORBIS_HEADER_FRAME){
@@ -857,7 +856,7 @@ static GstFlowReturn beep_dec_handle_frame (GstAudioDecoder * dec,
                 gst_buffer_map(codec_data, &map, GST_MAP_READ);
                 GST_INFO ("Set codec_data %" GST_PTR_FORMAT, codec_data);
                 parameter.codecData.size = map.size;
-                parameter.codecData.buf = map.data;
+                parameter.codecData.buf = (char *) map.data;
                 IDecoder->setDecoderPara(handle,UNIA_CODEC_DATA, &parameter);
                 gst_buffer_unmap(codec_data, &map);
                 beepdec->set_codec_data = TRUE;
@@ -900,7 +899,7 @@ begin:
             ret = GST_FLOW_EOS;
             beepdec->decoding_error = TRUE;
             gst_pad_push_event (dec->srcpad, gst_event_new_gap (beepdec->last_timestamp, GST_CLOCK_TIME_NONE));
-            GST_ERROR("core ret = ACODEC_INIT_ERR\n", core_ret);
+            GST_ERROR("core ret = ACODEC_INIT_ERR\n");
             goto bail;
         }
 

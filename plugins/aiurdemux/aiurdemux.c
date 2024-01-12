@@ -197,7 +197,7 @@ static AiurDemuxTagEntry g_user_data_entry[] = {
       "Track Number : %s\n"},
   {USER_DATA_TOTALTRACKNUMBER, USER_DATA_FORMAT_UTF8, GST_TAG_TRACK_COUNT,
       "Track Count : %s\n"},
-  {USER_DATA_LOCATION, USER_DATA_FORMAT_UTF8, -1,
+  {USER_DATA_LOCATION, USER_DATA_FORMAT_UTF8, "-1",
       "Location : %s\n"},
   {USER_DATA_KEYWORDS, USER_DATA_FORMAT_UTF8, GST_TAG_KEYWORDS,
       "Keywords : %s\n"},
@@ -283,9 +283,6 @@ static void aiurdemux_parse_audio (GstAiurDemux * demux, AiurDemuxStream * strea
 static void aiurdemux_parse_text (GstAiurDemux * demux, AiurDemuxStream * stream,
     gint track_index);
 static void aiurdemux_check_interleave_stream_eos (GstAiurDemux * demux);
-static void
-_gst_buffer_copy_into_mem (GstBuffer * dest, gsize offset, const guint8 * src,
-    gsize size);
 
 static GstFlowReturn aiurdemux_read_buffer(GstAiurDemux * demux, uint32* track_idx,
     AiurDemuxStream** stream_out);
@@ -505,6 +502,41 @@ static void gst_aiurdemux_finalize (GObject * object)
 
 }
 
+void aiurdemux_check_stream_status (GstAiurDemux * demux)
+{
+  guint8 idx = 0;
+  AiurDemuxStream *stream;
+
+  if (demux->valid_mask) {
+    for (idx = 0; idx < demux->n_streams; idx++) {
+      stream = demux->streams[idx];
+      if (!stream->valid && (stream->type != MEDIA_TEXT)) {
+        GstQuery *query;
+        gboolean busy;
+        gint percent = 0;
+        #define GAP_SENDING_THRESHOLD_PERCENT 10
+
+        /* query current queue status in multiqueue */
+        query = gst_query_new_buffering (GST_FORMAT_TIME);
+        if (gst_pad_peer_query (stream->pad, query)) {
+          gst_query_parse_buffering_percent (query, &busy, &percent);
+        }
+        gst_query_unref (query);
+        /* send GAP event to sink to finished pre-roll. The reason is data
+        * sending task may be blocked in other track, so can't trigger the track
+        * which reach EOS to send GAP event. */
+        if (percent < GAP_SENDING_THRESHOLD_PERCENT) {
+          GstEvent *gap = gst_event_new_gap (stream->time_position, GST_CLOCK_TIME_NONE);
+          gst_event_set_gap_flags (gap, GST_GAP_FLAG_MISSING_DATA);
+          gst_pad_push_event (stream->pad, gap);
+        }
+
+        continue;
+      }
+    }
+  }
+}
+
 static GstStateChangeReturn gst_aiurdemux_change_state (GstElement * element,
     GstStateChange transition)
 {
@@ -600,8 +632,8 @@ gst_aiurdemux_dump_stream_collections (GstStreamCollection *collection)
   gint i = 0;
   guint num_streams = gst_stream_collection_get_size (collection);
 
-  g_printf ("------------------------\n");
-  g_printf ("    adaptive streams collections info:\n");
+  g_print ("------------------------\n");
+  g_print ("    adaptive streams collections info:\n");
   for (i = 0; i < num_streams; i++) {
     GstStream *stream = gst_stream_collection_get_stream (collection, i);
     GstCaps *caps = gst_stream_get_caps (stream);
@@ -610,7 +642,7 @@ gst_aiurdemux_dump_stream_collections (GstStreamCollection *collection)
       gst_caps_unref (caps);
     }
   }
-  g_printf ("------------------------\n");
+  g_print ("------------------------\n");
 }
 
 static gboolean gst_aiurdemux_handle_sink_event(GstPad * sinkpad, GstObject * parent,
@@ -644,7 +676,7 @@ static gboolean gst_aiurdemux_handle_sink_event(GstPad * sinkpad, GstObject * pa
           if (demux->segment.start && (!demux->segment.time)) {
             demux->presentation_offset =
             demux->segment.start - demux->segment.time;
-            GST_DEBUG_OBJECT (demux, "demux->presentation_offset = %ld \n",
+            GST_DEBUG_OBJECT (demux, "demux->presentation_offset = %" G_GUINT64_FORMAT " \n",
             demux->presentation_offset);
           }
 
@@ -857,7 +889,7 @@ static gboolean gst_aiurdemux_handle_src_event (GstPad * pad, GstObject * parent
     case GST_EVENT_LATENCY:
       gst_event_parse_latency (event, &latency);
       demux->pipeline_latency = latency;
-      GST_LOG_OBJECT(demux,"set pipeline latency to %lld", latency);
+      GST_LOG_OBJECT(demux,"set pipeline latency to %" G_GUINT64_FORMAT, latency);
 
       res = gst_pad_event_default (pad,parent, event);
       break;
@@ -1632,42 +1664,6 @@ gboolean aiurdemux_update_eos_stream_position (GstAiurDemux * demux, GstClockTim
   return TRUE;
 }
 
-void aiurdemux_check_stream_status (GstAiurDemux * demux)
-{
-  guint8 idx = 0;
-  AiurDemuxStream *stream;
-  gboolean ret;
-
-  if (demux->valid_mask) {
-    for (idx = 0; idx < demux->n_streams; idx++) {
-      stream = demux->streams[idx];
-      if (!stream->valid && (stream->type != MEDIA_TEXT)) {
-        GstQuery *query;
-        gboolean busy;
-        gint percent = 0;
-        #define GAP_SENDING_THRESHOLD_PERCENT 10
-
-        /* query current queue status in multiqueue */
-        query = gst_query_new_buffering (GST_FORMAT_TIME);
-        if (gst_pad_peer_query (stream->pad, query)) {
-          gst_query_parse_buffering_percent (query, &busy, &percent);
-        }
-        gst_query_unref (query);
-        /* send GAP event to sink to finished pre-roll. The reason is data
-        * sending task may be blocked in other track, so can't trigger the track
-        * which reach EOS to send GAP event. */
-        if (percent < GAP_SENDING_THRESHOLD_PERCENT) {
-          GstEvent *gap = gst_event_new_gap (stream->time_position, GST_CLOCK_TIME_NONE);
-          gst_event_set_gap_flags (gap, GST_GAP_FLAG_MISSING_DATA);
-          gst_pad_push_event (stream->pad, gap);
-        }
-
-        continue;
-      }
-    }
-  }
-}
-
 GstFlowReturn aiurdemux_handle_eos_stream (GstAiurDemux * demux, AiurDemuxStream * select_stream, GstClockTime duration)
 {
   guint8 idx = 0;
@@ -1678,7 +1674,7 @@ GstFlowReturn aiurdemux_handle_eos_stream (GstAiurDemux * demux, AiurDemuxStream
   /* Send gap event to the specified stream */
   if (select_stream && demux->valid_mask) {
     if (select_stream->type == MEDIA_TEXT) {
-      return ;
+      return ret;
     }
 
     if (GST_CLOCK_TIME_IS_VALID (select_stream->last_start)) {
@@ -1757,7 +1753,6 @@ static GstFlowReturn aiurdemux_loop_state_movie (GstAiurDemux * demux)
   AiurDemuxStream *stream = NULL;
   GstBuffer *gstbuf = NULL;
   uint32 track_idx = 0;
-  AiurCoreInterface *IParser = demux->core_interface;
 
   GST_LOG_OBJECT(demux,"aiurdemux_loop_state_movie BEGIN");
 
@@ -1798,7 +1793,9 @@ static GstFlowReturn aiurdemux_loop_state_movie (GstAiurDemux * demux)
   //update time
   if (!stream || !stream->buffer)
     goto bail;
-    GST_LOG_OBJECT (demux, "CHECK track_idx=%d,usStartTime=%lld,sampleFlags=%x",track_idx,stream->sample_stat.start,stream->sample_stat.flag);
+
+  GST_LOG_OBJECT (demux, "CHECK track_idx=%d,usStartTime=%" G_GINT64_FORMAT ",sampleFlags=%" G_GUINT32_FORMAT,
+      track_idx,stream->sample_stat.start,stream->sample_stat.flag);
 
   if((demux->seekable == FALSE)
       && !aiurcontent_is_seelable(demux->content_info)
@@ -1893,7 +1890,7 @@ aiurdemux_print_track_info (AiurDemuxStream * stream)
   } else {
     g_print ("    Track %02d [%s]: Disabled\n", stream->track_idx,
             AIUR_MEDIATYPE2STR (stream->type));
-    g_print ("\tCodec: %ld, SubCodec: %ld\n",
+    g_print ("\tCodec: %u, SubCodec: %u\n",
             stream->codec_type, stream->codec_sub_type);
   }
   g_print("------------------------\n");
@@ -2147,11 +2144,10 @@ aiurdemux_add_user_tags (GstAiurDemux * demux)
             }else if(USER_DATA_LOCATION == id){
               gdouble latitude;
               gdouble longitude;
-              guint longitude_pos = 0;
-              guint8* latitude_ptr = g_strndup ((gchar *) userData, 8);
-              guint8* longitude_ptr = g_strndup ((gchar *) userData+8, 9);
-              if ((sscanf (latitude_ptr, "%lf", &latitude) == 1)
-                && (sscanf (longitude_ptr, "%lf", &longitude) == 1)) {
+              guint8* latitude_ptr = (guint8*) g_strndup ((gchar *) userData, 8);
+              guint8* longitude_ptr = (guint8*) g_strndup ((gchar *) userData+8, 9);
+              if ((sscanf ((char *) latitude_ptr, "%lf", &latitude) == 1)
+                && (sscanf ((char *) longitude_ptr, "%lf", &longitude) == 1)) {
                 gst_tag_list_add (list, GST_TAG_MERGE_APPEND,
                   GST_TAG_GEO_LOCATION_LATITUDE, latitude, NULL);
                 gst_tag_list_add (list, GST_TAG_MERGE_APPEND,
@@ -2506,14 +2502,14 @@ static void aiurdemux_parse_video (GstAiurDemux * demux, AiurDemuxStream * strea
   if(stream->codec_type == VIDEO_H264){
     if(stream->codec_data.length > 0 && stream->codec_data.codec_data != NULL){
       mime = g_strdup_printf
-    ("%s, stream-format=(string)avc, width=(int)%ld, height=(int)%ld, framerate=(fraction)%ld/%ld",
+    ("%s, stream-format=(string)avc, width=(int)%u, height=(int)%u, framerate=(fraction)%u/%u",
     mime, stream->info.video.width, stream->info.video.height,
     stream->info.video.fps_n, stream->info.video.fps_d);
       stream->send_codec_data = TRUE;
     }else{
       mime =
     g_strdup_printf
-    ("%s, stream-format=(string)byte-stream, width=(int)%ld, height=(int)%ld, framerate=(fraction)%ld/%ld",
+    ("%s, stream-format=(string)byte-stream, width=(int)%u, height=(int)%u, framerate=(fraction)%u/%u",
     mime, stream->info.video.width, stream->info.video.height,
     stream->info.video.fps_n, stream->info.video.fps_d);
       stream->send_codec_data = FALSE;
@@ -2521,14 +2517,14 @@ static void aiurdemux_parse_video (GstAiurDemux * demux, AiurDemuxStream * strea
   }else if (stream->codec_type == VIDEO_HEVC){
     if(stream->codec_data.length > 0 && stream->codec_data.codec_data != NULL){
       mime = g_strdup_printf
-      ("%s, stream-format=(string)hev1, width=(int)%ld, height=(int)%ld, framerate=(fraction)%ld/%ld",
+      ("%s, stream-format=(string)hev1, width=(int)%u, height=(int)%u, framerate=(fraction)%u/%u",
       mime, stream->info.video.width, stream->info.video.height,
       stream->info.video.fps_n, stream->info.video.fps_d);
       stream->send_codec_data = TRUE;
     }else{
       mime =
       g_strdup_printf
-      ("%s, stream-format=(string)byte-stream, width=(int)%ld, height=(int)%ld, framerate=(fraction)%ld/%ld",
+      ("%s, stream-format=(string)byte-stream, width=(int)%u, height=(int)%u, framerate=(fraction)%u/%u",
       mime, stream->info.video.width, stream->info.video.height,
       stream->info.video.fps_n, stream->info.video.fps_d);
       stream->send_codec_data = FALSE;
@@ -2536,7 +2532,7 @@ static void aiurdemux_parse_video (GstAiurDemux * demux, AiurDemuxStream * strea
   }else{
   mime =
     g_strdup_printf
-    ("%s, width=(int)%ld, height=(int)%ld, framerate=(fraction)%ld/%ld",
+    ("%s, width=(int)%u, height=(int)%u, framerate=(fraction)%u/%u",
     mime, stream->info.video.width, stream->info.video.height,
     stream->info.video.fps_n, stream->info.video.fps_d);
   }
@@ -2654,13 +2650,13 @@ static void aiurdemux_parse_audio (GstAiurDemux * demux, AiurDemuxStream * strea
         if (stream_type) {
           mime =
               g_strdup_printf
-              ("%s, channels=(int)%ld, rate=(int)%ld, bitrate=(int)%ld, stream-format=%s",
+              ("%s, channels=(int)%u, rate=(int)%u, bitrate=(int)%u, stream-format=%s",
               codec_mime, stream->info.audio.n_channels,
               stream->info.audio.rate, stream->bitrate, stream_type);
         } else {
           mime =
               g_strdup_printf
-              ("%s, channels=(int)%ld, rate=(int)%ld, bitrate=(int)%ld",
+              ("%s, channels=(int)%u, rate=(int)%u, bitrate=(int)%u",
               codec_mime, stream->info.audio.n_channels,
               stream->info.audio.rate, stream->bitrate);
         }
@@ -2671,7 +2667,7 @@ static void aiurdemux_parse_audio (GstAiurDemux * demux, AiurDemuxStream * strea
         stream->send_codec_data = TRUE;
         mime =
             g_strdup_printf
-            ("%s, channels=(int)%ld, rate=(int)%ld, bitrate=(int)%ld", codec_mime,
+            ("%s, channels=(int)%u, rate=(int)%u, bitrate=(int)%u", codec_mime,
             stream->info.audio.n_channels, stream->info.audio.rate,
             stream->bitrate);
         break;
@@ -2681,7 +2677,7 @@ static void aiurdemux_parse_audio (GstAiurDemux * demux, AiurDemuxStream * strea
         codec = "MP3";
         mime =
             g_strdup_printf
-            ("%s, channels=(int)%ld, rate=(int)%ld, bitrate=(int)%ld", codec_mime,
+            ("%s, channels=(int)%u, rate=(int)%u, bitrate=(int)%u", codec_mime,
             stream->info.audio.n_channels, stream->info.audio.rate,
             stream->bitrate);
         break;
@@ -2690,7 +2686,7 @@ static void aiurdemux_parse_audio (GstAiurDemux * demux, AiurDemuxStream * strea
         codec = "AC3";
         mime =
             g_strdup_printf
-            ("%s, channels=(int)%ld, rate=(int)%ld, bitrate=(int)%ld",
+            ("%s, channels=(int)%u, rate=(int)%u, bitrate=(int)%u",
             codec_mime, stream->info.audio.n_channels, stream->info.audio.rate,
             stream->bitrate);
         break;
@@ -2723,7 +2719,7 @@ static void aiurdemux_parse_audio (GstAiurDemux * demux, AiurDemuxStream * strea
         stream->send_codec_data = TRUE;
         mime =
             g_strdup_printf
-            ("%s, channels=(int)%ld, rate=(int)%ld, block_align=(int)%ld, depth=(int)%ld, bitrate=(int)%ld",
+            ("%s, channels=(int)%u, rate=(int)%u, block_align=(int)%u, depth=(int)%u, bitrate=(int)%u",
             codec_mime, stream->info.audio.n_channels, stream->info.audio.rate,
             stream->info.audio.block_align, stream->info.audio.sample_width,
             stream->bitrate);
@@ -2738,7 +2734,7 @@ static void aiurdemux_parse_audio (GstAiurDemux * demux, AiurDemuxStream * strea
         codec = "WMA Voice";
         mime =
           g_strdup_printf
-          ("%s, channels=(int)%ld, rate=(int)%ld, block_align=(int)%ld, depth=(int)%ld, bitrate=(int)%ld",
+          ("%s, channels=(int)%u, rate=(int)%u, block_align=(int)%u, depth=(int)%u, bitrate=(int)%u",
           codec_mime, stream->info.audio.n_channels, stream->info.audio.rate,
           stream->info.audio.block_align, stream->info.audio.sample_width,
           stream->bitrate);
@@ -2749,50 +2745,48 @@ static void aiurdemux_parse_audio (GstAiurDemux * demux, AiurDemuxStream * strea
         codec = "APE monkey's Audio";
         mime =
             g_strdup_printf
-            ("%s, channels=(int)%ld, rate=(int)%ld, bitrate=(int)%ld, framed=(boolean)true, depth=(int)%ld",
+            ("%s, channels=(int)%u, rate=(int)%u, bitrate=(int)%u, framed=(boolean)true, depth=(int)%u",
             codec_mime, stream->info.audio.n_channels, stream->info.audio.rate,
             stream->bitrate, stream->info.audio.sample_width);
         break;
 
       case AUDIO_PCM:
       {
-        int width, depth, endian;
-        gboolean sign = TRUE;
+        // int width, depth, endian;
         switch (stream->codec_sub_type) {
           case AUDIO_PCM_U8:
-            width = depth = 8;
-            endian = G_BYTE_ORDER;
-            sign = FALSE;
+            // width = depth = 8;
+            // endian = G_BYTE_ORDER;
             codec_mime = "format=(string)U8";
             break;
           case AUDIO_PCM_S16LE:
-            width = depth = 16;
-            endian = G_LITTLE_ENDIAN;
+            // width = depth = 16;
+            // endian = G_LITTLE_ENDIAN;
             codec_mime = "format=(string)S16LE";
             break;
           case AUDIO_PCM_S24LE:
-            width = depth = 24;
-            endian = G_LITTLE_ENDIAN;
+            // width = depth = 24;
+            // endian = G_LITTLE_ENDIAN;
             codec_mime = "format=(string)S24LE";
             break;
           case AUDIO_PCM_S32LE:
-            width = depth = 32;
-            endian = G_LITTLE_ENDIAN;
+            // width = depth = 32;
+            // endian = G_LITTLE_ENDIAN;
             codec_mime = "format=(string)S32LE";
             break;
           case AUDIO_PCM_S16BE:
-            width = depth = 16;
-            endian = G_BIG_ENDIAN;
+            // width = depth = 16;
+            // endian = G_BIG_ENDIAN;
             codec_mime = "format=(string)S16BE";
             break;
           case AUDIO_PCM_S24BE:
-            width = depth = 24;
-            endian = G_BIG_ENDIAN;
+            // width = depth = 24;
+            // endian = G_BIG_ENDIAN;
             codec_mime = "format=(string)S24BE";
             break;
           case AUDIO_PCM_S32BE:
-            width = depth = 32;
-            endian = G_BIG_ENDIAN;
+            // width = depth = 32;
+            // endian = G_BIG_ENDIAN;
             codec_mime = "format=(string)S32BE";
             break;
           default:
@@ -2802,7 +2796,7 @@ static void aiurdemux_parse_audio (GstAiurDemux * demux, AiurDemuxStream * strea
         codec = "PCM";
         mime =
             g_strdup_printf
-            ("audio/x-raw, %s,channels=(int)%ld, layout=(string)interleaved, rate=(int)%ld,bitrate=(int)%ld",codec_mime,
+            ("audio/x-raw, %s,channels=(int)%u, layout=(string)interleaved, rate=(int)%u,bitrate=(int)%u",codec_mime,
             stream->info.audio.n_channels, stream->info.audio.rate,stream->bitrate);
       }
         break;
@@ -2811,7 +2805,7 @@ static void aiurdemux_parse_audio (GstAiurDemux * demux, AiurDemuxStream * strea
           case REAL_AUDIO_RAAC:
             mime =
                 g_strdup_printf
-                ("audio/mpeg, mpegversion=(int)4, channels=(int)%ld, rate=(int)%ld, bitrate=(int)%ld",
+                ("audio/mpeg, mpegversion=(int)4, channels=(int)%u, rate=(int)%u, bitrate=(int)%u",
                 stream->info.audio.n_channels, stream->info.audio.rate,
                 stream->bitrate);
             codec = "AAC";
@@ -2819,7 +2813,7 @@ static void aiurdemux_parse_audio (GstAiurDemux * demux, AiurDemuxStream * strea
            case REAL_AUDIO_SIPR:
             mime =
                 g_strdup_printf
-                ("audio/x-sipro, channels=(int)%ld, rate=(int)%ld, bitrate=(int)%ld",
+                ("audio/x-sipro, channels=(int)%u, rate=(int)%u, bitrate=(int)%u",
                 stream->info.audio.n_channels, stream->info.audio.rate,
                 stream->bitrate);
             codec = "SIPRO";
@@ -2840,7 +2834,7 @@ static void aiurdemux_parse_audio (GstAiurDemux * demux, AiurDemuxStream * strea
               goto bail;
             mime =
                 g_strdup_printf
-                ("audio/x-pn-realaudio, channels=(int)%ld, rate=(int)%ld, frame_bit=(int)%ld",
+                ("audio/x-pn-realaudio, channels=(int)%u, rate=(int)%u, frame_bit=(int)%u",
                 stream->info.audio.n_channels, stream->info.audio.rate,
                 frame_bit);
             codec = "RealAudio";
@@ -2854,7 +2848,7 @@ static void aiurdemux_parse_audio (GstAiurDemux * demux, AiurDemuxStream * strea
         codec = "VORBIS";
         mime =
             g_strdup_printf
-            ("audio/x-vorbis, channels=(int)%ld, rate=(int)%ld, bitrate=(int)%ld, framed=(boolean)true",
+            ("audio/x-vorbis, channels=(int)%u, rate=(int)%u, bitrate=(int)%u, framed=(boolean)true",
             stream->info.audio.n_channels, stream->info.audio.rate,
             stream->bitrate);
         if(demux->option.disable_vorbis_codec_data){
@@ -2867,7 +2861,7 @@ static void aiurdemux_parse_audio (GstAiurDemux * demux, AiurDemuxStream * strea
         codec = "FLAC";
         mime =
             g_strdup_printf
-            ("audio/x-flac, channels=(int)%ld, rate=(int)%ld, bitrate=(int)%ld",
+            ("audio/x-flac, channels=(int)%u, rate=(int)%u, bitrate=(int)%u",
             stream->info.audio.n_channels, stream->info.audio.rate,
             stream->bitrate);
         break;
@@ -2875,7 +2869,7 @@ static void aiurdemux_parse_audio (GstAiurDemux * demux, AiurDemuxStream * strea
         codec = "DTS";
         mime =
             g_strdup_printf
-            ("audio/x-dts, channels=(int)%ld, rate=(int)%ld, bitrate=(int)%ld",
+            ("audio/x-dts, channels=(int)%u, rate=(int)%u, bitrate=(int)%u",
             stream->info.audio.n_channels, stream->info.audio.rate,
             stream->bitrate);
         break;
@@ -2883,7 +2877,7 @@ static void aiurdemux_parse_audio (GstAiurDemux * demux, AiurDemuxStream * strea
         codec = "SPEEX";
         mime =
             g_strdup_printf
-            ("audio/x-speex, channels=(int)%ld, rate=(int)%ld, bitrate=(int)%ld",
+            ("audio/x-speex, channels=(int)%u, rate=(int)%u, bitrate=(int)%u",
             stream->info.audio.n_channels, stream->info.audio.rate,
             stream->bitrate);
         break;
@@ -2911,15 +2905,15 @@ static void aiurdemux_parse_audio (GstAiurDemux * demux, AiurDemuxStream * strea
         stream->info.audio.n_channels = 1;
         mime =
             g_strdup_printf
-            ("%s, channels=(int)%ld, rate=(int)%ld, bitrate=(int)%ld",
+            ("%s, channels=(int)%u, rate=(int)%u, bitrate=(int)%u",
             codec_mime, stream->info.audio.n_channels, stream->info.audio.rate,
-            stream->info.audio.sample_width, stream->bitrate);
+            stream->bitrate);
         break;
       case AUDIO_EC3:
         codec = "Dobly Digital Plus (E-AC3)";
         mime =
             g_strdup_printf
-            ("audio/x-eac3, channels=(int)%ld, rate=(int)%ld, bitrate=(int)%ld",
+            ("audio/x-eac3, channels=(int)%u, rate=(int)%u, bitrate=(int)%u",
             stream->info.audio.n_channels, stream->info.audio.rate,
             stream->bitrate);
         break;
@@ -2927,7 +2921,7 @@ static void aiurdemux_parse_audio (GstAiurDemux * demux, AiurDemuxStream * strea
         codec = "OPUS";
         mime =
             g_strdup_printf
-            ("audio/x-opus, channel-mapping-family=(int)0, channels=(int)%ld, rate=(int)%ld, bitrate=(int)%ld",
+            ("audio/x-opus, channel-mapping-family=(int)0, channels=(int)%u, rate=(int)%u, bitrate=(int)%u",
             stream->info.audio.n_channels, stream->info.audio.rate,
             stream->bitrate);
         break;
@@ -2936,7 +2930,7 @@ static void aiurdemux_parse_audio (GstAiurDemux * demux, AiurDemuxStream * strea
           codec = "ALAC";
           mime =
               g_strdup_printf
-              ("%s, channels=(int)%ld, rate=(int)%ld, samplesize=(int)%ld", codec_mime,
+              ("%s, channels=(int)%u, rate=(int)%u, samplesize=(int)%u", codec_mime,
               stream->info.audio.n_channels, stream->info.audio.rate, stream->info.audio.sample_width);
         break;
       default:
@@ -3128,20 +3122,6 @@ static void aiurdemux_check_interleave_stream_eos (GstAiurDemux * demux)
 
 }
 
-static void
-_gst_buffer_copy_into_mem (GstBuffer * dest, gsize offset, const guint8 * src,
-    gsize size)
-{
-  gsize bsize;
-
-  g_return_if_fail (gst_buffer_is_writable (dest));
-
-  bsize = gst_buffer_get_size (dest);
-  g_return_if_fail (bsize >= offset + size);
-
-  gst_buffer_fill (dest, offset, src, size);
-}
-
 static GstFlowReturn aiurdemux_read_buffer (GstAiurDemux * demux, uint32* track_idx, AiurDemuxStream** stream_out)
 {
   GstFlowReturn ret = GST_FLOW_OK;
@@ -3250,7 +3230,7 @@ static GstFlowReturn aiurdemux_read_buffer (GstAiurDemux * demux, uint32* track_
         }
       }
 
-      GST_INFO ("min_time=%lld\n", min_time);
+      GST_INFO ("min_time=%" G_GINT64_FORMAT " \n", min_time);
 
       /* sutitle gap is used to inform the downstream elements that there is no data for a
        * certain amount of time, SUBTITLE_GAP_INTERVAL is set to avoid video being blocked. */
@@ -3266,8 +3246,8 @@ static GstFlowReturn aiurdemux_read_buffer (GstAiurDemux * demux, uint32* track_
         stream->last_stop = stream->time_position + SUBTITLE_GAP_INTERVAL;
 
         gst_pad_push_event (stream->pad, gap);
-        GST_INFO ("TEXT GAP event sent %d, time_position=%lld, "
-            "last_start=%lld, last_stop=%lld\n", *track_idx,
+        GST_INFO ("TEXT GAP event sent %d, time_position=%" G_GUINT64_FORMAT
+            ", last_start=%" G_GINT64_FORMAT ", last_stop=%" G_GINT64_FORMAT "\n", *track_idx,
             stream->time_position, stream->last_start, stream->last_stop);
 
         stream->time_position = stream->last_stop;
@@ -3586,9 +3566,9 @@ aiurdemux_check_start_offset (GstAiurDemux * demux, AiurDemuxStream * stream)
       if ((GST_CLOCK_TIME_IS_VALID(stream->last_timestamp)) &&
           ((stream->sample_stat.start < stream->last_timestamp - AIURDEMUX_TIMESTAMP_DISCONT_MAX_GAP) ||
            (stream->sample_stat.start > stream->last_timestamp + AIURDEMUX_TIMESTAMP_DISCONT_MAX_GAP))) {
-        GST_INFO_OBJECT(demux,"timestamp discontinuity, stream %d start_time: %lld --> %lld",
+        GST_INFO_OBJECT(demux,"timestamp discontinuity, stream %d start_time: %" G_GUINT64_FORMAT " --> %" G_GINT64_FORMAT,
               stream->track_idx, demux->start_time, stream->sample_stat.start);
-        GST_INFO_OBJECT(demux,"timestamp discontinuity, stream %d clock offset: %lld --> %lld",
+        GST_INFO_OBJECT(demux,"timestamp discontinuity, stream %d clock offset: %" G_GUINT64_FORMAT " --> %" G_GINT64_FORMAT,
               stream->track_idx, demux->clock_offset, offset);
         demux->start_time = stream->sample_stat.start;
         demux->clock_offset = offset;
@@ -3601,9 +3581,9 @@ aiurdemux_check_start_offset (GstAiurDemux * demux, AiurDemuxStream * stream)
         //new ts lag last for AIURDEMUX_TIMESTAMP_LAG_MAX_TIME, then change to new start time
         if (stream->lag_time != GST_CLOCK_TIME_NONE) {
           if ((offset - stream->lag_time) > AIURDEMUX_TIMESTAMP_LAG_MAX_TIME) {
-            GST_INFO_OBJECT(demux,"clock lag, stream %d start_time: %lld --> %lld",
+            GST_INFO_OBJECT(demux,"clock lag, stream %d start_time: %" G_GUINT64_FORMAT " --> %" G_GINT64_FORMAT,
               stream->track_idx, demux->start_time, stream->sample_stat.start);
-            GST_INFO_OBJECT(demux,"clock lag, stream %d clock offset: %lld --> %lld",
+            GST_INFO_OBJECT(demux,"clock lag, stream %d clock offset: %" G_GUINT64_FORMAT " --> %" G_GINT64_FORMAT,
               stream->track_idx, demux->clock_offset, offset);
             demux->start_time = stream->sample_stat.start;
             demux->clock_offset = offset;
@@ -3618,7 +3598,7 @@ aiurdemux_check_start_offset (GstAiurDemux * demux, AiurDemuxStream * stream)
         //new ts is larger than meida time by far, align it to media time
         if (new_ts - offset > AIURDEMUX_TIMESTAMP_LAG_MAX_TIME) {
           stream->sample_stat.start = offset - demux->clock_offset + demux->start_time;
-          GST_INFO_OBJECT(demux, "timestamp gap, align to mediatime %lld", offset);
+          GST_INFO_OBJECT(demux, "timestamp gap, align to mediatime %" G_GINT64_FORMAT, offset);
         }
       }
     }
@@ -3646,11 +3626,11 @@ aiurdemux_check_start_offset (GstAiurDemux * demux, AiurDemuxStream * stream)
       if( demux->avg_diff > (gint64)GST_MSECOND * (demux->option.streaming_latency+demux->option.low_latency_tolerance)){
         demux->media_offset -= GST_MSECOND * demux->option.low_latency_tolerance*5/4;
         demux->avg_diff = 0;
-        GST_LOG_OBJECT(demux,"***media_offset 1=%lld",demux->media_offset);
+        GST_LOG_OBJECT(demux,"***media_offset 1=%" G_GINT64_FORMAT,demux->media_offset);
       }else if(demux->avg_diff < (gint64)GST_MSECOND*(demux->option.streaming_latency - demux->option.low_latency_tolerance)){
         demux->media_offset += (GST_MSECOND * demux->option.low_latency_tolerance*3/4);
         demux->avg_diff = 0;
-        GST_LOG_OBJECT (demux,"***media_offset 2=%lld",demux->media_offset);
+        GST_LOG_OBJECT (demux,"***media_offset 2=%" G_GINT64_FORMAT,demux->media_offset);
       }
     }
 }
@@ -3970,7 +3950,8 @@ void aiurdemux_check_buffer_sending_status (GstAiurDemux * demux, AiurDemuxStrea
             ret);
           }
         } else {
-          GST_LOG_OBJECT(demux, "pad: %s, buffering position is invalid");
+          GST_LOG_OBJECT(demux, "pad: %s, buffering position is invalid",
+          GST_OBJECT_NAME (stream->pad));
         }
       }
     }
@@ -3997,7 +3978,7 @@ static GstFlowReturn aiurdemux_push_pad_buffer (GstAiurDemux * demux, AiurDemuxS
     stream->block = FALSE;
   }
 
-  GST_DEBUG_OBJECT (demux,"%s push sample %" GST_TIME_FORMAT " size %d is discont: %d is delta unit: %d",
+  GST_DEBUG_OBJECT (demux,"%s push sample %" GST_TIME_FORMAT " size %" G_GSIZE_FORMAT "is discont: %d is delta unit: %d",
       AIUR_MEDIATYPE2STR (stream->type),
       GST_TIME_ARGS (GST_BUFFER_TIMESTAMP (buffer)), gst_buffer_get_size (buffer), \
       GST_BUFFER_FLAG_IS_SET (buffer, GST_BUFFER_FLAG_DISCONT), \
@@ -4127,7 +4108,7 @@ static gboolean
 gst_aiurdemux_perform_seek (GstAiurDemux * demux, GstSegment * segment,
     gint accurate)
 {
-  gint64 desired_offset;
+  gint64 desired_offset = 0;
   gint n;
   int32 core_ret = 0;
   gdouble rate = segment->rate;
@@ -4175,7 +4156,7 @@ gst_aiurdemux_perform_seek (GstAiurDemux * demux, GstSegment * segment,
     /* and set all streams to the final position */
     for (n = 0; n < demux->n_streams; n++) {
       AiurDemuxStream *stream = demux->streams[n];
-      guint64 usSeekTime = AIUR_GSTTS_2_CORETS (desired_offset);
+      uint64 usSeekTime = AIUR_GSTTS_2_CORETS (desired_offset);
 
       aiurdemux_reset_stream (demux, stream);
 
@@ -4200,7 +4181,7 @@ gst_aiurdemux_perform_seek (GstAiurDemux * demux, GstSegment * segment,
 
   } else {
     AiurDemuxStream *stream = NULL;
-    guint64 usSeekTime = AIUR_GSTTS_2_CORETS (desired_offset);
+    uint64 usSeekTime = AIUR_GSTTS_2_CORETS (desired_offset);
     core_ret = PARSER_SUCCESS;
 
     for (n = 0; n < demux->n_streams; n++) {

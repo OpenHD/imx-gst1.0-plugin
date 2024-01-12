@@ -186,7 +186,6 @@ static GstElementClass *parent_class = NULL;
 static void gst_imxcompositor_finalize (GObject * object)
 {
   GstImxCompositor *imxcomp = (GstImxCompositor *)(object);
-  GstStructure *config;
   GstImxCompositorClass *klass =
         (GstImxCompositorClass *) G_OBJECT_GET_CLASS (imxcomp);
 
@@ -784,7 +783,6 @@ gst_imxcompositor_negotiated_caps (GstAggregator * vagg, GstCaps * caps)
 {
   GstImxCompositor *imxcomp = (GstImxCompositor *) (vagg);
   GstQuery *query;
-  gboolean result = TRUE;
   GstStructure *config = NULL;
   guint size, num, min = 0, max = 0;
   GstAggregator *agg = GST_AGGREGATOR (imxcomp);
@@ -1145,7 +1143,7 @@ static gint gst_imxcompositor_config_src(GstImxCompositor *imxcomp,
   GstBuffer *pad_buffer = NULL;
   guint i, n_mem;
   GstDmabufMeta *dmabuf_meta;
-  gint64 drm_modifier = 0;
+  guint64 drm_modifier = 0;
 
 #if GST_CHECK_VERSION(1, 16, 0)
   GstVideoFrame * aggregated_frame = gst_video_aggregator_pad_get_prepared_frame (ppad);
@@ -1178,15 +1176,15 @@ static gint gst_imxcompositor_config_src(GstImxCompositor *imxcomp,
 
   /* For tiled format, the stride value is the tile number and need to convert to the byte size */
   if (GST_VIDEO_FORMAT_INFO_IS_TILED(ppad->info.finfo)) {
-    gint ws = GST_VIDEO_FORMAT_INFO_TILE_WS (ppad->info.finfo);
-    src->info.stride = GST_VIDEO_TILE_X_TILES(src->info.stride) << ws;
+    gint ws = GST_VIDEO_FORMAT_INFO_TILE_STRIDE (ppad->info.finfo, 0);
+    src->info.stride = GST_VIDEO_TILE_X_TILES(src->info.stride) * ws;
   }
 
   dmabuf_meta = gst_buffer_get_dmabuf_meta (pad_buffer);
   if (dmabuf_meta)
     drm_modifier = dmabuf_meta->drm_modifier;
 
-  GST_INFO_OBJECT (pad, "buffer modifier type %d", drm_modifier);
+  GST_INFO_OBJECT (pad, "buffer modifier type %" G_GUINT64_FORMAT, drm_modifier);
 
   if (drm_modifier == DRM_FORMAT_MOD_AMPHION_TILED)
     src->info.tile_type = IMX_2D_TILE_AMHPION;
@@ -1277,7 +1275,7 @@ gst_imxcompositor_fill_background(Imx2DFrame *dst, guint RGBA8888)
 static void
 gst_imxcompositor_fill_background(Imx2DFrame *dst, guint RGBA8888)
 {
-  gchar *p = dst->mem->vaddr;
+  gchar *p = (gchar *)dst->mem->vaddr;
   gint i;
   gchar R,G,B,A,Y,U,V;
   gdouble y,u,v;
@@ -1482,7 +1480,6 @@ gst_imxcompositor_aggregate_frames (GstVideoAggregator * vagg,
   GList *l;
   GstImxCompositor *imxcomp = (GstImxCompositor *) (vagg);
   Imx2DDevice *device = imxcomp->device;
-  GstFlowReturn ret;
   Imx2DFrame src = {0}, dst = {0};
   PhyMemBlock src_mem = {0}, dst_mem = {0};
   guint aggregated = 0;
@@ -1501,7 +1498,7 @@ gst_imxcompositor_aggregate_frames (GstVideoAggregator * vagg,
       dst.mem->vaddr = map.data;
       dst.mem->size = map.size;
       need_unmap = TRUE;
-      GST_LOG("map background buffer %p size %d", dst.mem->vaddr, dst.mem->size);
+      GST_LOG("map background buffer %p size %" G_GSIZE_FORMAT, dst.mem->vaddr, dst.mem->size);
     }
   }
 
@@ -1576,7 +1573,7 @@ gst_imxcompositor_aggregate_frames (GstVideoAggregator * vagg,
       if (!src.mem->paddr)
         src.mem->paddr = _get_cached_phyaddr (gst_buffer_peek_memory (pad_buffer, 0));
       if (!src.mem->user_data && src.fd[1] >= 0)
-        src.mem->user_data = _get_cached_phyaddr (gst_buffer_peek_memory (pad_buffer, 1));
+        src.mem->user_data = (gpointer *)_get_cached_phyaddr (gst_buffer_peek_memory (pad_buffer, 1));
       if (!dst.mem->paddr)
         dst.mem->paddr = _get_cached_phyaddr (gst_buffer_peek_memory (outbuf, 0));
 
@@ -1588,7 +1585,7 @@ gst_imxcompositor_aggregate_frames (GstVideoAggregator * vagg,
       if (!_get_cached_phyaddr (gst_buffer_peek_memory (pad_buffer, 0)))
         _set_cached_phyaddr (gst_buffer_peek_memory (pad_buffer, 0), src.mem->paddr);
       if (src.fd[1] >= 0 && !_get_cached_phyaddr (gst_buffer_peek_memory (pad_buffer, 1)))
-        _set_cached_phyaddr (gst_buffer_peek_memory (pad_buffer, 1), src.mem->user_data);
+        _set_cached_phyaddr (gst_buffer_peek_memory (pad_buffer, 1), (guint8 *)src.mem->user_data);
       if (!_get_cached_phyaddr (gst_buffer_peek_memory (outbuf, 0)))
         _set_cached_phyaddr (gst_buffer_peek_memory (outbuf, 0), dst.mem->paddr);
 
@@ -1951,7 +1948,7 @@ static gboolean gst_imx_compositor_register (GstPlugin * plugin)
     /* Check devices capabilities */
     Imx2DDevice* dev = in_plugin->create(in_plugin->device_type);
     if (!dev)
-      return;
+      return FALSE;
 
     gint capabilities = dev->get_capabilities(dev);
     if (!(capabilities & IMX_2D_DEVICE_CAP_BLEND) &&

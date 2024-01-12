@@ -279,11 +279,8 @@ static void
 gst_imxcompositor_pad_create_conversion_info (GstVideoAggregatorConvertPad * pad,
     GstVideoAggregator * vagg, GstVideoInfo * conversion_info)
 {
-  GstImxCompositor *comp = (GstImxCompositor *)(vagg);
   GstImxCompositorPad *cpad = (GstImxCompositorPad *)(pad);
   GstVideoAggregatorPad *vpad = (GstVideoAggregatorPad *)(pad);
-  gchar *colorimetry, *best_colorimetry;
-  const gchar *chroma, *best_chroma;
   gint width, height;
 
   GST_VIDEO_AGGREGATOR_CONVERT_PAD_CLASS
@@ -291,9 +288,6 @@ gst_imxcompositor_pad_create_conversion_info (GstVideoAggregatorConvertPad * pad
       conversion_info);
   if (!conversion_info->finfo)
     return;
-
-  colorimetry = gst_video_colorimetry_to_string (&(conversion_info->colorimetry));
-  chroma = gst_video_chroma_to_string (conversion_info->chroma_site);
 
   gst_imxcompositor_pad_get_output_size (vagg, cpad, &width, &height);
 

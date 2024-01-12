@@ -6,7 +6,7 @@ endif
 gst_audio_dep = cc.find_library('gstaudio-' + api_version)
 
 beepdec_sources = [ 'beep.c', 'beepdec.c', 'beepregistry.c', 'beeptypefind.c']
-beepdec_headers = ['beepdec.h', 'beepregistry.h']
+beepdec_headers = ['beepdec.h', 'beepregistry.h', 'beeptypefind.h']
 gstbeepdec = library('gstbeepdec',
   beepdec_sources + beepdec_headers,
   c_args: version_flags + beepdec_cflags,

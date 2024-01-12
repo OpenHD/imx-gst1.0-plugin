@@ -259,8 +259,6 @@ static OSinkHandle *gosink = NULL;
 
 static GMutex *get_lock()
 {
-  GMutex *lock = NULL;
-
   if(!glock) {
     glock = g_slice_alloc (sizeof (GMutex));
     if (!glock)
@@ -275,7 +273,7 @@ static GMutex *get_lock()
 static void destroy_osink_object()
 {
   gint i;
-  struct stat shmStat;
+  struct stat;
 
   if (!gosink)
     return;
@@ -317,7 +315,7 @@ static OSinkHandle *create_osink_object()
 
   memset (handle, 0, sizeof (OSinkHandle));
 
-  if (scan_displays (&handle->hdisplay, &handle->display_count) < 0) {
+  if (scan_displays ((gpointer **)&handle->hdisplay, &handle->display_count) < 0) {
     GST_ERROR ("scan displays failed.");
     destroy_osink_object();
     return NULL;
@@ -327,8 +325,8 @@ static OSinkHandle *create_osink_object()
     handle->display_enabled[i] = FALSE;
     handle->disp_info[i].name = get_display_name (handle->hdisplay[i]);
     handle->disp_info[i].fmt = get_display_format (handle->hdisplay[i]);
-    get_display_res (handle->hdisplay[i], &handle->disp_info[i].width,
-        &handle->disp_info[i].height, &handle->disp_info[i].stride);
+    get_display_res (handle->hdisplay[i], (gint *)&handle->disp_info[i].width,
+        (gint *)&handle->disp_info[i].height, (gint *)&handle->disp_info[i].stride);
   }
 
   return handle;
@@ -605,7 +603,6 @@ int osink_object_config_overlay (gpointer osink_handle, gpointer overlay, Surfac
 
 int osink_object_update_overlay (gpointer osink_handle, gpointer overlay, SurfaceBuffer *buffer)
 {
-  gint ret;
   OSinkHandle *handle;
   OSinkOverlay *hoverlay;
 

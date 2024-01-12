@@ -597,7 +597,6 @@ gboolean gstsutils_get_value_by_key(GstsutilsGroup *group,gchar * key, gchar**va
 {
   gboolean ret = FALSE;
   GstsutilsData * data = NULL;
-  gchar * value = NULL;
   gint i = 0;
   do{
     if(group == NULL || key == NULL || value_out == NULL)
@@ -660,7 +659,6 @@ void gstsutils_load_default_property(gstsutils_property * table,GstObject* dec,
     const gchar * filename, const gchar * group)
 {
     GKeyFile *keyfile = NULL;
-    gboolean ret = FALSE;
 
     if (filename == NULL)
       goto bail;
@@ -724,7 +722,6 @@ void gstsutils_load_default_property(gstsutils_property * table,GstObject* dec,
             p++;
 
           };
-          ret = TRUE;
 
      }
     bail:

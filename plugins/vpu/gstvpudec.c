@@ -400,7 +400,6 @@ gst_vpu_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
   if (IS_HANTRO() || IS_AMPHION()) {
     if (alloc_has_meta) {
       const GstStructure *params;
-      gchar *meta;
       gint j, len;
 
       gst_query_parse_nth_allocation_meta (query, alloc_index, &params);
@@ -408,13 +407,14 @@ gst_vpu_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
           params);
       if (params) {
         const GValue *vdrm_modifier = gst_structure_get_value (params, "dmabuf.drm_modifier");
+        gchar *meta = gst_structure_to_string (params);
         if (GST_VALUE_HOLDS_LIST (vdrm_modifier)) {
           len = gst_value_list_get_size (vdrm_modifier);
           for (j = 0; j < len; j++) {
             const GValue *val;
             val = gst_value_list_get_value (vdrm_modifier, j);
             guint64 drm_modifier = g_value_get_uint64 (val);
-            GST_DEBUG_OBJECT (dec, "dmabuf meta has modifier: %lld", drm_modifier);
+            GST_DEBUG_OBJECT (dec, "dmabuf meta has modifier: %" G_GUINT64_FORMAT, drm_modifier);
             if (IS_AMPHION() && drm_modifier == DRM_FORMAT_MOD_AMPHION_TILED)
               dec->vpu_dec_object->drm_modifier = drm_modifier;
             else if (IS_HANTRO() && drm_modifier == DRM_FORMAT_MOD_VSI_G2_TILED_COMPRESSED
@@ -428,13 +428,13 @@ gst_vpu_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
                   DRM_FORMAT_MOD_AMPHION_TILED);
             }
           }
-        } else if (meta = gst_structure_to_string (params)) {
+        } else if (meta) {
           guint64 drm_modifier;
           GST_DEBUG_OBJECT (dec, "dmabuf meta has modifier: %s", meta);
-          sscanf (meta, "GstDmabufMeta, dmabuf.drm_modifier=(guint64){ %lld };", &drm_modifier);
-          GST_DEBUG_OBJECT (dec, "dmabuf meta has modifier: %lld", drm_modifier);
+          sscanf (meta, "GstDmabufMeta, dmabuf.drm_modifier=(guint64){ %" G_GUINT64_FORMAT " };", &drm_modifier);
+          GST_DEBUG_OBJECT (dec, "dmabuf meta has modifier: %" G_GUINT64_FORMAT, drm_modifier);
           if (drm_modifier == DRM_FORMAT_MOD_AMPHION_TILED) {
-            GST_DEBUG_OBJECT (dec, "video sink support modifier: %lld", drm_modifier);
+            GST_DEBUG_OBJECT (dec, "video sink support modifier: %" G_GUINT64_FORMAT, drm_modifier);
             dec->vpu_dec_object->drm_modifier = drm_modifier;
           } else {
             GST_WARNING_OBJECT (dec, "video sink can't support modifier: %lld",
@@ -452,7 +452,6 @@ gst_vpu_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
   if (IS_HANTRO() && dec->vpu_dec_object->drm_modifier_pre != dec->vpu_dec_object->drm_modifier) {
     int config_param = 0;
     GstVpuDecObject * vpu_dec_object = dec->vpu_dec_object;
-    gint height_align;
     gint width_align;
     guint i;
 
@@ -478,7 +477,7 @@ gst_vpu_dec_decide_allocation (GstVideoDecoder * bdec, GstQuery * query)
 
     dec->vpu_dec_object->drm_modifier_pre = dec->vpu_dec_object->drm_modifier;
   }
-  GST_DEBUG_OBJECT (dec, "used modifier: %lld", dec->vpu_dec_object->drm_modifier);
+  GST_DEBUG_OBJECT (dec, "used modifier: %" G_GUINT64_FORMAT, dec->vpu_dec_object->drm_modifier);
 
   if (dec->vpu_dec_object->vpu_need_reconfig == FALSE
     && dec->vpu_dec_object->use_my_pool

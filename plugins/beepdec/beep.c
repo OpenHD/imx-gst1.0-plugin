@@ -37,6 +37,7 @@
 #endif
 #include "beepdec.h"
 #include "gstimxcommon.h"
+#include "beeptypefind.h"
 
 static gboolean
 plugin_init (GstPlugin * plugin)

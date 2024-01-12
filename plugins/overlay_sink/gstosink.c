@@ -81,7 +81,7 @@ GType
 gst_imx_rotate_method_get_type()
 {
   static GType rotate_method_type = 0;
-  static volatile gsize once = 0;
+  static gsize once = 0;
 
   if (g_once_init_enter (&once)) {
     rotate_method_type = g_enum_register_static ("GstImxRotateMethod",
@@ -94,7 +94,7 @@ gst_imx_rotate_method_get_type()
 
 
 static GstFlowReturn
-gst_overlay_sink_show_frame (GstBaseSink * bsink, GstBuffer * buffer);
+gst_overlay_sink_show_frame (GstVideoSink * bsink, GstBuffer * buffer);
 
 GST_IMPLEMENT_VIDEO_OVERLAY_METHODS (GstOverlaySink, gst_overlay_sink);
 
@@ -111,7 +111,7 @@ static gboolean overlay_sink_update_video_geo(GstElement * object, GstVideoRecta
 
   osink->config[0] = TRUE;
   if (((GstBaseSink*)osink)->eos || GST_STATE(object) == GST_STATE_PAUSED) {
-    gst_overlay_sink_show_frame((GstBaseSink *)osink, osink->prv_buffer);
+    gst_overlay_sink_show_frame((GstVideoSink *)osink, osink->prv_buffer);
   }
 
   return TRUE;
@@ -179,7 +179,6 @@ gst_overlay_sink_set_property (GObject * object,
 {
   GstOverlaySink *sink = GST_OVERLAY_SINK (object);
   guint idx, prop; 
-  gint val;
 
   GST_DEBUG_OBJECT (sink, "set_property (%d).", prop_id);
 
@@ -216,7 +215,7 @@ gst_overlay_sink_set_property (GObject * object,
       sink->config[idx] = g_value_get_boolean (value);
       if (sink->config[idx] &&
           (((GstBaseSink*)sink)->eos || GST_STATE(sink) == GST_STATE_PAUSED)) {
-        gst_overlay_sink_show_frame((GstBaseSink *)sink, sink->prv_buffer);
+        gst_overlay_sink_show_frame((GstVideoSink *)sink, sink->prv_buffer);
         sink->config[idx] = FALSE;
       }
       break;
@@ -789,12 +788,10 @@ gst_overlay_sink_get_surface_buffer (GstBuffer *gstbuffer, SurfaceBuffer *surfac
 }
 
 static GstFlowReturn
-gst_overlay_sink_show_frame (GstBaseSink * bsink, GstBuffer * buffer)
+gst_overlay_sink_show_frame (GstVideoSink * bsink, GstBuffer * buffer)
 {
   GstOverlaySink *sink = GST_OVERLAY_SINK (bsink);
-  gboolean not_overlay_buffer = FALSE;
   GstVideoCropMeta *cropmeta = NULL;
-  GstVideoFrameFlags flags = GST_VIDEO_FRAME_FLAG_NONE;
   SurfaceBuffer surface_buffer = {0};
   gint i;
   GstVideoInfo info;

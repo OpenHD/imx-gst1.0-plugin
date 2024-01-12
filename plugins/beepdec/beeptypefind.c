@@ -28,7 +28,7 @@
   * Portability:    This code is written for Linux OS and Gstreamer
   */
 
-#include <gst/gst.h>
+#include "beeptypefind.h"
 
 typedef void (*BeepTypeFindFunc) (GstTypeFind *, gpointer);
 
@@ -60,7 +60,7 @@ beep_register_external_typefinders (GstPlugin * plugin)
   BeepExternalTypeFind *t = g_beepextypefinders;
   while (t->name) {
     GstCaps *caps;
-    caps = gst_caps_new_simple(t->mime, NULL);
+    caps = gst_caps_new_empty_simple (t->mime);
     ret &= gst_type_find_register (plugin, t->name, GST_RANK_PRIMARY,
         t->func, t->exts, caps, NULL, NULL);
     gst_caps_unref(caps);
@@ -78,7 +78,7 @@ static GstStaticCaps caps_ac3 = GST_STATIC_CAPS("audio/x-ac3");
 static void
 ac3_typefind (GstTypeFind * tf, gpointer data)
 {
-  guint8 *data_in = gst_type_find_peek (tf, 0, 2);
+  const guint8 *data_in = gst_type_find_peek (tf, 0, 2);
 
   if (data_in) {
     if (data_in[0] == 0x0b && data_in[1] == 0x77)
@@ -89,7 +89,7 @@ ac3_typefind (GstTypeFind * tf, gpointer data)
 static void
 ac3_bigendian_typefind (GstTypeFind * tf, gpointer data)
 {
-  guint8 *data_in = gst_type_find_peek (tf, 0, 2);
+  const guint8 *data_in = gst_type_find_peek (tf, 0, 2);
 
   if (data_in) {
     if (data_in[1] == 0x0b && data_in[0] == 0x77)

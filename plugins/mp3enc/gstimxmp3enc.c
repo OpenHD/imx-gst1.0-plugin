@@ -285,7 +285,6 @@ gst_imx_mp3enc_handle_frame (GstAudioEncoder * benc, GstBuffer * buf)
 
   MP3E_Encoder_Config *pEnc_config;
   GstMapInfo map, omap;
-  GstAudioInfo *info = gst_audio_encoder_get_audio_info (benc);
 
   GST_DEBUG_OBJECT (benc, "handle_frame");
 
@@ -310,9 +309,9 @@ gst_imx_mp3enc_handle_frame (GstAudioEncoder * benc, GstBuffer * buf)
   gst_buffer_map (out, &omap, GST_MAP_WRITE);
 
   pEnc_config = &imx_mp3enc->enc_config;
-  mp3e_encode_frame((MP3E_INT16 *)map.data, pEnc_config, omap.data);
+  mp3e_encode_frame((MP3E_INT16 *)map.data, pEnc_config, (MP3E_INT8 *)omap.data);
 
-  GST_LOG_OBJECT (imx_mp3enc, "encoded to %lu bytes", pEnc_config->num_bytes);
+  GST_LOG_OBJECT (imx_mp3enc, "encoded to %d bytes", pEnc_config->num_bytes);
   gst_buffer_unmap (buf, &map);
   gst_buffer_unmap (out, &omap);
   gst_buffer_resize (out, 0, pEnc_config->num_bytes);
@@ -342,9 +341,9 @@ gst_imx_mp3enc_flush(GstAudioEncoder *benc)
   out = gst_buffer_new_and_alloc (imx_mp3enc->enc_param.mp3e_outbuf_size);
   gst_buffer_map (out, &omap, GST_MAP_WRITE);
 
-  mp3e_flush_bitstream(pEnc_config, omap.data);
+  mp3e_flush_bitstream(pEnc_config, (MP3E_INT8 *)omap.data);
 
-  GST_LOG_OBJECT (imx_mp3enc, "mp3e flush %lu bytes", pEnc_config->num_bytes);
+  GST_LOG_OBJECT (imx_mp3enc, "mp3e flush %d bytes", pEnc_config->num_bytes);
   gst_buffer_unmap (out, &omap);
   gst_buffer_resize (out, 0, pEnc_config->num_bytes);
 
@@ -359,13 +358,12 @@ gst_imx_mp3enc_flush(GstAudioEncoder *benc)
 static gboolean imx_mp3enc_alloc_mem(GstImxMp3Enc * imx_mp3enc)
 {
   MP3E_Encoder_Config *enc_config = &imx_mp3enc->enc_config;
-  int instance_id = enc_config->instance_id;
   guint8 * buf_pt = NULL;
   int i;
 
   for (i=0; i<6; i++)  {
-    imx_mp3enc->buf_blk[i] = (char *)g_malloc(sizeof(char)*enc_config->mem_info[i].size);
-    buf_pt = imx_mp3enc->buf_blk[i];
+    imx_mp3enc->buf_blk[i] = (guint8 *)g_malloc(sizeof(char)*enc_config->mem_info[i].size);
+    buf_pt = (guint8 *)imx_mp3enc->buf_blk[i];
     if (NULL == buf_pt)
       return FALSE;
     enc_config->mem_info[i].ptr = (int*)((unsigned int )(buf_pt + enc_config->mem_info[i].align - 1 )
@@ -402,7 +400,6 @@ imx_mp3enc_core_prepare (GstImxMp3Enc * imx_mp3enc)
 
 static void imx_mp3enc_free_mem(GstImxMp3Enc * imx_mp3enc)
 {
-  MP3E_Encoder_Config *enc_config = &imx_mp3enc->enc_config;
   guint8 * buf_pt = NULL;
   int i;
 

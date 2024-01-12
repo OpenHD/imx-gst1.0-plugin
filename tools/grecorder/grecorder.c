@@ -24,6 +24,8 @@
 #include <pthread.h>
 #include <signal.h>
 #include <getopt.h>
+#include <unistd.h>
+#include <glib.h>
 #define __USE_LARGEFILE64
 #include <sys/statvfs.h>
 
@@ -37,7 +39,7 @@
 
 #define START_MEDIATIME_INFO_THREAD(thread, recorder)\
   do{\
-    if (thread == NULL){\
+    if (!thread){\
       exit_thread = RE_BOOLEAN_FALSE;\
       pthread_create(&(thread), NULL, display_media_time, (recorder));\
     }\
@@ -48,7 +50,7 @@
     if((thread && exit_thread == RE_BOOLEAN_FALSE)) {\
       exit_thread = RE_BOOLEAN_TRUE;\
       pthread_join ((thread), NULL);\
-      (thread)=NULL;\
+      (thread)=0;\
     }\
   }while(0)
 
@@ -65,7 +67,7 @@
 
 #define START_MESSAGE_PROCESS_THREAD(thread, recorder)\
   do{\
-    if (thread == NULL){\
+    if (!thread){\
       exit_thread = RE_BOOLEAN_FALSE;\
       pthread_create(&(thread), NULL, process_message, (recorder));\
     }\
@@ -77,39 +79,9 @@
       exit_thread = RE_BOOLEAN_TRUE;\
       sem_post(&grecordersem);\
       pthread_join ((thread), NULL);\
-      (thread)=NULL;\
+      (thread)=0;\
     }\
   }while(0)
-
-#define RECORDER_START \
-  do{\
-    post_message (MESSAGE_START);\
-  }while(0) 
-
-#define RECORDER_STOP \
-  do{\
-    post_message (MESSAGE_STOP);\
-  }while(0) 
-
-#define RECORDER_PAUSE \
-  do{\
-    post_message (MESSAGE_PAUSE);\
-  }while(0) 
-
-#define RECORDER_RESUME \
-  do{\
-    post_message (MESSAGE_RESUME);\
-  }while(0) 
-
-#define RECORDER_TAKE_SNAPSHOT \
-  do{\
-    post_message (MESSAGE_SNAPSHOT);\
-  }while(0) 
-
-#define RECORDER_RESET \
-  do{\
-    post_message (MESSAGE_RESET);\
-  }while(0) 
 
 typedef enum{
     MESSAGE_NULL,
@@ -157,16 +129,51 @@ typedef struct {
   REboolean use_default_filename;
 }REOptions;
 
-static pthread_t media_time_thread = NULL;
-static pthread_t message_process_thread = NULL;
+static pthread_t media_time_thread = 0;
+static pthread_t message_process_thread = 0;
 static REboolean exit_thread = RE_BOOLEAN_FALSE;
 static REboolean bstartmediatime = RE_BOOLEAN_FALSE;
 static REchar path[1024];
-static REboolean bAgingtest = RE_BOOLEAN_FALSE;
 static sem_t grecordersem;
 static RecorderMessage latest_message = MESSAGE_NULL;
 
 static volatile sig_atomic_t quit_flag = 0;
+
+void post_message (RecorderMessage message)
+{
+  latest_message = message;
+  sem_post(&grecordersem);
+}
+
+#define RECORDER_START \
+  do{\
+    post_message (MESSAGE_START);\
+  }while(0)
+
+#define RECORDER_STOP \
+  do{\
+    post_message (MESSAGE_STOP);\
+  }while(0)
+
+#define RECORDER_PAUSE \
+  do{\
+    post_message (MESSAGE_PAUSE);\
+  }while(0)
+
+#define RECORDER_RESUME \
+  do{\
+    post_message (MESSAGE_RESUME);\
+  }while(0)
+
+#define RECORDER_TAKE_SNAPSHOT \
+  do{\
+    post_message (MESSAGE_SNAPSHOT);\
+  }while(0)
+
+#define RECORDER_RESET \
+  do{\
+    post_message (MESSAGE_RESET);\
+  }while(0)
 
 static void signal_handler(int signum)
 {
@@ -197,7 +204,7 @@ static void monitor_storage_free_size (RecorderEngine* recorder)
   }
 }
 
-static void display_media_time (void* param)
+static void* display_media_time (void* param)
 {
   RecorderEngine* recorder = 	(RecorderEngine*)param;
   REtime sCur;
@@ -214,8 +221,8 @@ static void display_media_time (void* param)
       {
         Hours = (sCur/1000000) / 3600;
         Minutes = (sCur/ (60*1000000)) % 60;
-        Seconds = ((sCur %(3600*1000000)) % (60*1000000))/1000000;
-        printf("\r[Current Media Time] %03d:%02d:%02d", 
+        Seconds = ((sCur %(3600*(REuint32)1000000)) % (60*1000000))/1000000;
+        printf("\r[Current Media Time] %03u:%02u:%02u",
             Hours, Minutes, Seconds);
         fflush(stdout);
       }
@@ -228,7 +235,7 @@ static void display_media_time (void* param)
       usleep (50000);
   }
 
-  return;
+  return NULL;
 }
 
 static int set_recoder_setting (RecorderEngine *recorder, REOptions * pOpt)
@@ -476,13 +483,7 @@ static int set_recoder_setting_video (RecorderEngine *recorder, REOptions * pOpt
   return 0;
 }
 
-void post_message (RecorderMessage message)
-{
-  latest_message = message;
-  sem_post(&grecordersem);
-}
-
-static void process_message (void* param)
+void* process_message (void* param)
 {
   RecorderEngine* recorder = 	(RecorderEngine*)param;
 
@@ -520,13 +521,12 @@ static void process_message (void* param)
     }
   }
 
-  return;
+  return NULL;
 }
 
 static void list_camera_capabilities (RecorderEngine* recorder) 
 { 
   REresult ret; 
-  RERawVideoSettings videoProperty;
   REuint32 index; 
 
   LOG_INFO ("\nCamera Capebilities:\n\n"); 
@@ -540,9 +540,8 @@ static void list_camera_capabilities (RecorderEngine* recorder)
   }
 }
 
-static int event_handler(void* context, REuint32 eventID, void* Eventpayload)
+static REresult event_handler(void* context, REuint32 eventID, void* Eventpayload)
 {
-  RecorderEngine* recorder = (RecorderEngine*) context;
   switch(eventID) {
     case RE_EVENT_ERROR_UNKNOWN:
       LOG_ERROR ("error, post stop message.\n");
@@ -790,7 +789,7 @@ static int recorder_parse_options(int argc, char* argv[], REOptions * pOpt)
   pOpt->use_default_filename = RE_BOOLEAN_FALSE;
   if (pOpt->path[0] == 0) {
     pOpt->use_default_filename = RE_BOOLEAN_TRUE;
-    if (getcwd(path, sizeof(path)) == NULL) {
+    if (!getcwd(path, sizeof(path))) {
       LOG_ERROR ("get current path fail\n");
       return -1;
     }
@@ -810,7 +809,6 @@ int main(int argc, char* argv[])
   REOptions options;
   char rep[128];
   char ext_ctrls[64*1024];
-  int ret = 0;
 
   struct sigaction act;
   act.sa_handler = signal_handler;
@@ -865,7 +863,8 @@ int main(int argc, char* argv[])
       memset (rep, 0, sizeof(rep));
       if (read_input){
         recorder_main_menu();
-        scanf("%128s", rep);
+        if (scanf("%128s", rep) != 1)
+          printf ("can not read value using scanf");
       }
       read_input=RE_BOOLEAN_TRUE;
       if (quit_flag) {
@@ -919,7 +918,8 @@ int main(int argc, char* argv[])
         printf ("example to enable Auto Expose: {<id>:<ae.s.en>;<enable>:false}\n");
         printf ("Detail control string formats please refer to bsp isp v4l2 user guide\n");
         printf ("Please input isp extra controls:\n");
-        scanf("%65536s", ext_ctrls);
+        if (scanf("%65536s", ext_ctrls) != 1)
+          printf ("can not read value using scanf");
         recorder->set_ext_ctrls ((RecorderEngineHandle)recorder, ext_ctrls);
       }
       else if(rep[0] == '*') {

@@ -1165,7 +1165,7 @@ input_thread_fun (gpointer data)
         guint64 connection_speed = 0;
         g_print ("Set adaptive playback connection speed in bps:");
         gDisable_display = TRUE;
-        if (scanf ("%lu", &connection_speed) != 1) {
+        if (scanf ("%" G_GUINT64_FORMAT, &connection_speed) != 1) {
           gDisable_display = FALSE;
           break;
         }
@@ -1355,8 +1355,8 @@ input_thread_fun (gpointer data)
 
       case 'f':
       {
-        guint width = 0;
-        guint height = 0;
+        gint32 width = 0;
+        gint32 height = 0;
         GstPlayVideoOverlayVideoRenderer *VideoOverlayVideoRenderer =
                               GST_PLAY_VIDEO_OVERLAY_VIDEO_RENDERER (VideoRender);
         if (!gplay_get_fullscreen_size (&width, &height));
@@ -1543,7 +1543,7 @@ input_thread_fun (gpointer data)
           {
             gint64 pos = 0;
             pos = gst_play_get_position (play);
-            g_print ("Current playing position : %lld\n", pos);
+            g_print ("Current playing position : %" G_GINT64_FORMAT "\n", pos);
           }
             break;
 
@@ -1551,16 +1551,16 @@ input_thread_fun (gpointer data)
           {
             gint64 duration = 0;
             duration = gst_play_get_duration (play);
-            g_print ("Duration : %lld\n", duration);
+            g_print ("Duration : %" G_GINT64_FORMAT "\n", duration);
           }
             break;
 
           case 'z':
           {
-            guint x = 0;
-            guint y = 0;
-            guint width = 0;
-            guint height = 0;
+            gint x = 0;
+            gint y = 0;
+            gint width = 0;
+            gint height = 0;
             GstPlayVideoOverlayVideoRenderer *VideoOverlayVideoRenderer =
                               GST_PLAY_VIDEO_OVERLAY_VIDEO_RENDERER (VideoRender);
             gst_play_video_overlay_video_renderer_get_render_rectangle
@@ -1648,7 +1648,6 @@ main (int argc, char *argv[])
   GstPlay *play = NULL;
   gchar *uri = NULL;
   GstPlayVideoRenderer *VideoRender = NULL;
-  GstPlayVideoOverlayVideoRenderer *VideoOverlayVideoRenderer = NULL;
   sPlay.loop = NULL;
   GstElement *video_sink = NULL;
   GstElement *audio_sink = NULL;
@@ -1713,9 +1712,6 @@ main (int argc, char *argv[])
       gst_play_video_overlay_video_renderer_new_with_sink (NULL, video_sink);
   }
 
-  VideoOverlayVideoRenderer =
-      GST_PLAY_VIDEO_OVERLAY_VIDEO_RENDERER (VideoRender);
-
   play =
       gst_play_new (VideoRender);
 
@@ -1779,7 +1775,7 @@ main (int argc, char *argv[])
 
   if (options.connection_speed) {
     gst_play_set_connection_speed (play, options.connection_speed);
-    g_print ("connection speed update done, value: %ld\n", options.connection_speed);
+    g_print ("connection speed update done, value: %" G_GUINT64_FORMAT "\n", options.connection_speed);
   }
 
   if (options.display_refresh_frq != 0) {

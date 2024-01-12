@@ -286,17 +286,17 @@ create_encording_profile (gRecorderEngine *recorder)
       gst_caps_unref (caps);
       break;
     case RE_OUTPUT_FORMAT_MKV:
-      caps = gst_caps_new_simple ("video/x-matroska", NULL);
+      caps = gst_caps_new_empty_simple ("video/x-matroska");
       container = gst_encoding_container_profile_new ("mkv", NULL, caps, NULL);
       gst_caps_unref (caps);
       break;
     case RE_OUTPUT_FORMAT_AVI:
-      caps = gst_caps_new_simple ("video/x-msvideo", NULL);
+      caps = gst_caps_new_empty_simple ("video/x-msvideo");
       container = gst_encoding_container_profile_new ("avi", NULL, caps, NULL);
       gst_caps_unref (caps);
       break;
     case RE_OUTPUT_FORMAT_FLV:
-      caps = gst_caps_new_simple ("video/x-flv", NULL);
+      caps = gst_caps_new_empty_simple ("video/x-flv");
       container = gst_encoding_container_profile_new ("flv", NULL, caps, NULL);
       gst_caps_unref (caps);
       break;
@@ -313,7 +313,7 @@ create_encording_profile (gRecorderEngine *recorder)
   switch (recorder->video_encoder_format) {
     case RE_VIDEO_ENCODER_DEFAULT:
     case RE_VIDEO_ENCODER_H264:
-        caps = gst_caps_new_simple ("video/x-h264", NULL);
+        caps = gst_caps_new_empty_simple ("video/x-h264");
         sprof = (GstEncodingProfile *)
           gst_encoding_video_profile_new (caps, NULL, NULL, 1);
         //FIXME: videorate has issue.
@@ -323,7 +323,7 @@ create_encording_profile (gRecorderEngine *recorder)
         gst_caps_unref (caps);
         break;
     case RE_VIDEO_ENCODER_H265:
-        caps = gst_caps_new_simple ("video/x-h265", NULL);
+        caps = gst_caps_new_empty_simple ("video/x-h265");
         sprof = (GstEncodingProfile *)
           gst_encoding_video_profile_new (caps, NULL, NULL, 1);
         //FIXME: videorate has issue.
@@ -345,7 +345,7 @@ create_encording_profile (gRecorderEngine *recorder)
         gst_caps_unref (caps);
         break;
      case RE_VIDEO_ENCODER_H263:
-        caps = gst_caps_new_simple ("video/x-h263", NULL);
+        caps = gst_caps_new_empty_simple ("video/x-h263");
         sprof = (GstEncodingProfile *)
           gst_encoding_video_profile_new (caps, NULL, NULL, 1);
         //FIXME: videorate has issue.
@@ -355,7 +355,7 @@ create_encording_profile (gRecorderEngine *recorder)
         gst_caps_unref (caps);
         break;
      case RE_VIDEO_ENCODER_MJPEG:
-        caps = gst_caps_new_simple ("image/jpeg", NULL);
+        caps = gst_caps_new_empty_simple ("image/jpeg");
         sprof = (GstEncodingProfile *)
           gst_encoding_video_profile_new (caps, NULL, NULL, 1);
         //FIXME: videorate has issue.
@@ -365,7 +365,7 @@ create_encording_profile (gRecorderEngine *recorder)
         gst_caps_unref (caps);
         break;
     case RE_VIDEO_ENCODER_VP8:
-        caps = gst_caps_new_simple ("video/x-vp8", NULL);
+        caps = gst_caps_new_empty_simple ("video/x-vp8");
         sprof = (GstEncodingProfile *)
           gst_encoding_video_profile_new (caps, NULL, NULL, 1);
         //FIXME: videorate has issue.
@@ -503,7 +503,7 @@ sync_bus_callback (GstBus * bus, GstMessage * message, gpointer data)
         } else if (gst_structure_has_name (st, "facedetect")) {
           const GValue *value_list = gst_structure_get_value (st, "faces");
           REVideoRect object_pos;
-          GstStructure *str;
+          const GstStructure *str;
           gchar *sstr;
           guint i, n;
 
@@ -860,8 +860,6 @@ setup_pipeline (gRecorderEngine *recorder)
   if (recorder->videosrc_name) {
     GstElement *wrapper;
     GstElement *videosrc_filter;
-    GstElement *video_effect;
-    GstElement *capsfilter;
     GstElement *actual_video_source;
     gchar *video_filter_str = NULL;
 
@@ -1007,7 +1005,7 @@ setup_pipeline (gRecorderEngine *recorder)
       return RE_RESULT_PARAMETER_INVALID;
     }
 
-    gchar *video_sink_str = g_strdup_printf ("%s%s", "rtpmp2tpay ! udpsink async=false sync=false host=", recorder->host);
+    gchar *video_sink_str = g_strdup_printf ("%s%s", "rtpmp2tpay ! udpsink async=false sync=false host=", (char *)recorder->host);
     res &=
       setup_pipeline_element_bin (recorder->camerabin, "video-sink", 
           video_sink_str, NULL);
@@ -1244,20 +1242,20 @@ run_pipeline (gRecorderEngine *recorder)
 
   set_metadata (recorder->camerabin);
 
-  GST_DEBUG ("Setting filename: %s", recorder->filename);
+  GST_DEBUG ("Setting filename: %s", (char *) recorder->filename);
 
   if (recorder->mode == MODE_VIDEO) {
     if (recorder->video_sink) {
       const gchar *filename_suffix;
-      const gchar *filename_str;
-      filename_suffix = strrchr(recorder->filename, '.');
+      gchar *filename_str;
+      filename_suffix = strrchr((char *) recorder->filename, '.');
       filename_str =
-        g_strdup_printf ("%s%s%s", recorder->filename, "%05d", filename_suffix);
+        g_strdup_printf ("%s%s%s", (char *) recorder->filename, "%05d", filename_suffix);
       GST_DEBUG ("Setting filename: %s", filename_str);
       g_object_set (recorder->video_sink, "location", filename_str, NULL);
       g_free (filename_str);     
     } else if (recorder->host) {
-      GST_DEBUG ("web camera host: %s", recorder->host);
+      GST_DEBUG ("web camera host: %s", (char *) recorder->host);
     } else
       g_object_set (recorder->camerabin, "location", recorder->filename, NULL);
   } else
@@ -1529,25 +1527,21 @@ static REresult set_audio_source(RecorderEngineHandle handle, REuint32 as)
 
 static REresult get_audio_supported_sample_rate(RecorderEngineHandle handle, REuint32 index, REuint32 *sampleRate)
 {
-  RecorderEngine *h = (RecorderEngine *)(handle);
   return RE_RESULT_SUCCESS;
 }
 
 static REresult set_audio_sample_rate(RecorderEngineHandle handle, REuint32 sampleRate)
 {
-  RecorderEngine *h = (RecorderEngine *)(handle);
   return RE_RESULT_SUCCESS;
 }
 
 static REresult get_audio_supported_channel(RecorderEngineHandle handle, REuint32 index, REuint32 *channels)
 {
-  RecorderEngine *h = (RecorderEngine *)(handle);
   return RE_RESULT_SUCCESS;
 }
 
 static REresult set_audio_channel(RecorderEngineHandle handle, REuint32 channels)
 {
-  RecorderEngine *h = (RecorderEngine *)(handle);
   return RE_RESULT_SUCCESS;
 }
 
@@ -1556,7 +1550,6 @@ static REresult set_video_source(RecorderEngineHandle handle, REuint32 vs)
   RecorderEngine *h = (RecorderEngine *)(handle);
   gRecorderEngine *recorder = (gRecorderEngine *)(h->pData);
   CHECK_PARAM (vs, RE_VIDEO_SOURCE_LIST_END);
-  gchar *videosrc = NULL;
 
   static KeyMap kKeyMap[] = {
     { RE_VIDEO_SOURCE_DEFAULT, (REchar *)"autovideosrc" },
@@ -1701,7 +1694,7 @@ static REresult set_camera_output_settings(RecorderEngineHandle handle, RERawVid
                 "format", G_TYPE_STRING, video_format_name,
                 NULL), NULL);
 
-      GST_INFO_OBJECT (recorder->camerabin, "camera output caps is %", 
+      GST_INFO_OBJECT (recorder->camerabin, "camera output caps is %"
           GST_PTR_FORMAT, recorder->camera_output_caps);
     } else {
       recorder->camera_output_caps = gst_caps_new_full (gst_structure_new ("video/x-raw",
@@ -1727,7 +1720,6 @@ static REresult disable_viewfinder (RecorderEngineHandle handle, REboolean bDisa
 
 static REresult set_preview_region(RecorderEngineHandle handle, REVideoRect *rect)
 {
-  RecorderEngine *h = (RecorderEngine *)(handle);
   return RE_RESULT_SUCCESS;
 }
 
@@ -1743,13 +1735,11 @@ static REresult set_preview_win_id(RecorderEngineHandle handle, void *wid)
 
 static REresult need_preview_buffer(RecorderEngineHandle handle, REboolean bNeedPreviewBuffer)
 {
-  RecorderEngine *h = (RecorderEngine *)(handle);
   return RE_RESULT_SUCCESS;
 }
 
 static REresult get_preview_buffer_format(RecorderEngineHandle handle, RERawVideoSettings *videoProperty)
 {
-  RecorderEngine *h = (RecorderEngine *)(handle);
   return RE_RESULT_SUCCESS;
 }
 
@@ -1898,7 +1888,7 @@ static REresult set_output_file_path (RecorderEngineHandle handle, const REchar 
     recorder->filename = NULL;
   }
 
-  recorder->filename = g_strdup (path);
+  recorder->filename = (GString *) g_strdup (path);
 
   return RE_RESULT_SUCCESS;
 }
@@ -1913,7 +1903,7 @@ static REresult set_rtp_host (RecorderEngineHandle handle, const REchar *host, R
     recorder->host = NULL;
   }
 
-  recorder->host = g_strdup (host);
+  recorder->host = (GString *) g_strdup (host);
   recorder->port = port;
 
   return RE_RESULT_SUCCESS;
@@ -1950,19 +1940,16 @@ static REresult set_max_file_size_bytes (RecorderEngineHandle handle, REuint64 b
 
 static REresult set_output_file_settings (RecorderEngineHandle handle, REOutputFileSettings *outputFileSettings)
 {
-  RecorderEngine *h = (RecorderEngine *)(handle);
   return RE_RESULT_SUCCESS;
 }
 
 static REresult set_snapshot_output_format(RecorderEngineHandle handle, REuint32 of)
 {
-  RecorderEngine *h = (RecorderEngine *)(handle);
   return RE_RESULT_SUCCESS;
 }
 
 static REresult set_snapshot_output_file(RecorderEngineHandle handle, const REchar *path)
 {
-  RecorderEngine *h = (RecorderEngine *)(handle);
   return RE_RESULT_SUCCESS;
 }
 
@@ -2031,7 +2018,6 @@ static REresult take_snapshot(RecorderEngineHandle handle)
 
 static REresult init(RecorderEngineHandle handle)
 {
-  REresult ret = RE_RESULT_SUCCESS;
   RecorderEngine *h = (RecorderEngine *)(handle);
   gRecorderEngine *recorder = (gRecorderEngine *)(h->pData);
 
@@ -2108,13 +2094,13 @@ static REresult init(RecorderEngineHandle handle)
   recorder->change_mode_after = 0;
   recorder->capture_times = NULL;
 
-  recorder->target_startup;
-  recorder->target_change_mode;
-  recorder->target_shot_to_shot;
-  recorder->target_shot_to_save;
-  recorder->target_shot_to_snapshot;
-  recorder->target_preview_to_precapture;
-  recorder->target_shot_to_buffer;
+  // recorder->target_startup;
+  // recorder->target_change_mode;
+  // recorder->target_shot_to_shot;
+  // recorder->target_shot_to_save;
+  // recorder->target_shot_to_snapshot;
+  // recorder->target_preview_to_precapture;
+  // recorder->target_shot_to_buffer;
   recorder->camera_caps = NULL;
   recorder->camera_output_caps = NULL;
 
@@ -2207,13 +2193,11 @@ static REresult start(RecorderEngineHandle handle)
 
 static REresult pause(RecorderEngineHandle handle)
 {
-  RecorderEngine *h = (RecorderEngine *)(handle);
   return RE_RESULT_SUCCESS;
 }
 
 static REresult resume(RecorderEngineHandle handle)
 {
-  RecorderEngine *h = (RecorderEngine *)(handle);
   return RE_RESULT_SUCCESS;
 }
 
@@ -2299,7 +2283,6 @@ static REresult reset(RecorderEngineHandle handle)
 
 static REresult get_max_amplitude(RecorderEngineHandle handle, REuint32 *max)
 {
-  RecorderEngine *h = (RecorderEngine *)(handle);
   return RE_RESULT_SUCCESS;
 }
 
@@ -2321,7 +2304,7 @@ static REresult get_media_time(RecorderEngineHandle handle, REtime *pMediaTimeUs
     return ret;
   }
 
-  GST_DEBUG ("current media time: %lld", cur);
+  GST_DEBUG ("current media time: %" G_GINT64_FORMAT, cur);
   *pMediaTimeUs = cur/1000 - recorder->base_media_timeUs;
 
   return ret;

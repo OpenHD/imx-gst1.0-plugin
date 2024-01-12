@@ -398,9 +398,9 @@ gst_imx_v4l2_allocator_cb (gpointer user_data, gint *count)
 
     if (gst_imx_v4l2src_config (v4l2src) < 0) {
       GST_ERROR_OBJECT (v4l2src, "camera configuration failed.\n");
-      g_printf ("capture device: %s probed caps: %" GST_PTR_FORMAT, v4l2src->device, \
+      g_print ("capture device: %s probed caps: %" GST_PTR_FORMAT, v4l2src->device, \
           v4l2src->probed_caps);
-      g_printf ("Please config accepted caps!\n");
+      g_print ("Please config accepted caps!\n");
       return -1;
     }
 
@@ -718,10 +718,7 @@ gst_imx_v4l2src_create (GstPushSrc * src, GstBuffer ** buf)
     gstnow = GST_TIMESPEC_TO_TIME (now);
 
     if (gstnow < timestamp && (timestamp - gstnow) > (10 * GST_SECOND)) {
-      GTimeVal now;
-
-      g_get_current_time (&now);
-      gstnow = GST_TIMEVAL_TO_TIME (now);
+      gstnow = g_get_real_time ();
     }
 
     if (gstnow > timestamp) {
@@ -804,8 +801,8 @@ gst_imx_v4l2src_get_all_caps ()
 {
   GstCaps *caps = gst_imx_v4l2_get_device_caps (V4L2_BUF_TYPE_VIDEO_CAPTURE);
   if(!caps) {
-    g_printf ("Can't get caps from capture device, use the default setting.\n");
-    g_printf ("Perhaps haven't capture device.\n");
+    g_print ("Can't get caps from capture device, use the default setting.\n");
+    g_print ("Perhaps haven't capture device.\n");
     caps = gst_imx_v4l2src_default_caps ();
   }
 
