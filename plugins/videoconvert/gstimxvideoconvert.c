@@ -369,6 +369,10 @@ static gint get_format_conversion_loss(GstBaseTransform * base,
   if (HAS_DPU ()) {
     if (in_name == GST_VIDEO_FORMAT_NV12_10BE_8L128 && out_name == GST_VIDEO_FORMAT_NV12)
       return 0;
+    /* g2d-dpu can do YUY2 to NV12 convert */
+    if (in_name == GST_VIDEO_FORMAT_YUY2
+        && out_name == GST_VIDEO_FORMAT_NV12)
+      return 0;
     if (in_name == GST_VIDEO_FORMAT_NV12_10LE40
         && out_name == GST_VIDEO_FORMAT_NV12)
       return 0;
