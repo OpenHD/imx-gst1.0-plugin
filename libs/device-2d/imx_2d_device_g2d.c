@@ -720,6 +720,54 @@ static gint imx_g2d_fill_color(Imx2DDevice *device, Imx2DFrame *dst,
   return ret;
 }
 
+static GstVideoFormat imx_g2d_extract_format (GstCaps * caps)
+{
+  gint i, caps_size;
+  GstStructure *st;
+  const GValue *format;
+  const gchar *fmt_name;
+
+  caps_size = gst_caps_get_size (caps);
+  for (i = 0; i < caps_size; i++) {
+    st = gst_caps_get_structure(caps, i);
+    format = gst_structure_get_value (st, "format");
+    if (!GST_VALUE_HOLDS_LIST (format) && G_VALUE_HOLDS_STRING (format)) {
+      fmt_name = g_value_get_string (format);
+      return gst_video_format_from_string(fmt_name);
+    }
+  }
+
+  return GST_VIDEO_FORMAT_UNKNOWN;
+}
+
+static gboolean imx_g2d_check_conversion (GstCaps *input_caps, GstCaps *output_caps)
+{
+  const G2dFmtMap *in_map = NULL;
+  const G2dFmtMap *out_map = NULL;
+
+  if (!HAS_DPU()) {
+    return TRUE;
+  }
+
+  in_map = imx_g2d_get_format(imx_g2d_extract_format(input_caps));
+  out_map = imx_g2d_get_format(imx_g2d_extract_format(output_caps));
+  if (!in_map || !out_map) {
+    GST_INFO ("No valid input or output format, input caps %" GST_PTR_FORMAT
+        ", output_caps %" GST_PTR_FORMAT, input_caps, output_caps);
+    return FALSE;
+  }
+
+  if (out_map->g2d_format == G2D_NV12) {
+    if (in_map->g2d_format != G2D_YUYV) {
+      return FALSE;
+    } else {
+      return TRUE;
+    }
+  }
+
+  return TRUE;
+}
+
 Imx2DDevice * imx_g2d_create(Imx2DDeviceType  device_type)
 {
   Imx2DDevice * device = g_slice_alloc(sizeof(Imx2DDevice));
@@ -750,6 +798,7 @@ Imx2DDevice * imx_g2d_create(Imx2DDeviceType  device_type)
   device->get_capabilities    = imx_g2d_get_capabilities;
   device->get_supported_in_fmts  = imx_g2d_get_supported_in_fmts;
   device->get_supported_out_fmts = imx_g2d_get_supported_out_fmts;
+  device->check_conversion    = imx_g2d_check_conversion;
 
   return device;
 }

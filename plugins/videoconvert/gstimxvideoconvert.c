@@ -1289,8 +1289,10 @@ imx_video_convert_accept_caps (GstBaseTransform * transform,
 
   GST_DEBUG_OBJECT (transform, "accept caps %" GST_PTR_FORMAT, caps);
   /* Check whether the current format conversion
-   * is supported for OpenGL-based 2d device */
-  if (device->device_type == IMX_2D_DEVICE_OCL) {
+   * is supported for OpenCL-based 2d device or
+   * g2d device which has DPU */
+  if ((device->device_type == IMX_2D_DEVICE_OCL)
+      || ((device->device_type == IMX_2D_DEVICE_G2D) && HAS_DPU())) {
     pad =
       (direction ==
       GST_PAD_SINK) ? GST_BASE_TRANSFORM_SRC_PAD (transform) :
