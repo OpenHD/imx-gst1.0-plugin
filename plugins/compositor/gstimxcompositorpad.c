@@ -585,7 +585,9 @@ gst_imxcompositor_pad_prepare_frame (GstVideoAggregatorPad * pad, GstVideoAggreg
       gst_video_frame_map(&copy_frame, &info, cpad->sink_tmp_buf, GST_MAP_WRITE);
       gst_video_frame_copy(&copy_frame, &frame);
       gst_video_frame_unmap (&frame);
-      frame = copy_frame;
+      gst_video_frame_unmap (&copy_frame);
+
+      gst_video_frame_map(&frame, &info, cpad->sink_tmp_buf, GST_MAP_READ);
 
       if (imxcomp->composition_meta_enable
               && imx_video_overlay_composition_has_meta(buffer)) {
