@@ -1625,7 +1625,7 @@ static GstFlowReturn imx_video_convert_transform(GstBaseTransform * trans, GstBu
   if (in_crop != NULL) {
     GST_LOG ("input crop meta: (%d, %d, %d, %d).", in_crop->x, in_crop->y,
         in_crop->width, in_crop->height);
-    if ((in_crop->x >= in_info.width) || (in_crop->y >= in_info.height))
+    if ((in_crop->x >= src.info.w) || (in_crop->y >= src.info.h))
       return GST_FLOW_ERROR;
 
     src.crop.x += in_crop->x;
@@ -1697,7 +1697,7 @@ static GstFlowReturn imx_video_convert_transform(GstBaseTransform * trans, GstBu
   if (out_crop != NULL) {
     GST_LOG ("output crop meta: (%d, %d, %d, %d).", out_crop->x, out_crop->y,
         out_crop->width, out_crop->height);
-    if ((out_crop->x >= filter->out_info.width) || (out_crop->y >= filter->out_info.height))
+    if ((out_crop->x >= dst.info.w) || (out_crop->y >= dst.info.h))
       return GST_FLOW_ERROR;
 
     dst.crop.x += out_crop->x;
