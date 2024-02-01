@@ -1521,6 +1521,18 @@ static GstFlowReturn imx_video_convert_transform(GstBaseTransform * trans, GstBu
           imxvct->out_video_align.padding_top,
           imxvct->out_video_align.padding_right,
           imxvct->out_video_align.padding_bottom);
+
+          /* Update output buffer alignment information
+           * because some plugins such as imxcompositor need it */
+          GstVideoMeta *video_meta;
+          video_meta = gst_buffer_get_video_meta (outbuf);
+          if (video_meta) {
+            video_meta->alignment.padding_left = imxvct->out_video_align.padding_left;
+            video_meta->alignment.padding_top = imxvct->out_video_align.padding_top;
+            video_meta->alignment.padding_right = imxvct->out_video_align.padding_right;
+            video_meta->alignment.padding_bottom = imxvct->out_video_align.padding_bottom;
+            GST_DEBUG_OBJECT (imxvct, "update output buffer alignment");
+          }
       }
 
       gst_structure_free (config);
