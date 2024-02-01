@@ -213,7 +213,9 @@ gst_imxcompositor_pad_get_output_size (GstVideoAggregator * vagg,
   guint dar_n, dar_d;
   gint v_width, v_height;
   GstVideoCropMeta *in_crop = NULL;
+  GstVideoMeta *video_meta = NULL;
   GstBuffer *pad_buffer = NULL;
+  gint src_w, src_h;
 
   if (!vagg || !comp_pad || !width || !height)
     return;
@@ -235,16 +237,24 @@ gst_imxcompositor_pad_get_output_size (GstVideoAggregator * vagg,
 
   if (pad_buffer) {
     in_crop = gst_buffer_get_video_crop_meta(pad_buffer);
+    video_meta = gst_buffer_get_video_meta (pad_buffer);
     if (in_crop != NULL) {
       GST_LOG_OBJECT (vagg_pad, "input crop meta: (%d, %d, %d, %d)",
           in_crop->x, in_crop->y, in_crop->width, in_crop->height);
-      if ((in_crop->x >= v_width) || (in_crop->y >= v_height)) {
+      if (video_meta) {
+        src_w = video_meta->width + video_meta->alignment.padding_left + video_meta->alignment.padding_right;
+        src_h = video_meta->height + video_meta->alignment.padding_top + video_meta->alignment.padding_bottom;
+      } else {
+        src_w = v_width;
+        src_h = v_height;
+      }
+      if ((in_crop->x >= src_w) || (in_crop->y >= src_h)) {
         *width = *height = 0;
         return;
       }
 
-      v_width = MIN(in_crop->width, (v_width - in_crop->x));
-      v_height = MIN(in_crop->height, (v_height - in_crop->y));
+      v_width = MIN(in_crop->width, (src_w - in_crop->x));
+      v_height = MIN(in_crop->height, (src_h - in_crop->y));
     }
   }
 
@@ -411,6 +421,8 @@ gst_imxcompositor_pad_prepare_frame (GstVideoAggregatorPad * pad, GstVideoAggreg
   GstVideoRectangle clamp;
   gint o_width, o_height;
   GstVideoCropMeta *in_crop = NULL;
+  GstVideoMeta *video_meta = NULL;
+  gint src_w, src_h;
 
   cpad->ignore_composite = TRUE;
 
@@ -421,23 +433,31 @@ gst_imxcompositor_pad_prepare_frame (GstVideoAggregatorPad * pad, GstVideoAggreg
     return TRUE;
   }
 
-  cpad->src_crop.x = 0;
-  cpad->src_crop.y = 0;
-  cpad->src_crop.w = GST_VIDEO_INFO_WIDTH (&pad->info);
-  cpad->src_crop.h = GST_VIDEO_INFO_HEIGHT (&pad->info);
-
   in_crop = gst_buffer_get_video_crop_meta(buffer);
+  video_meta = gst_buffer_get_video_meta (buffer);
   if (in_crop != NULL) {
     GST_LOG_OBJECT (pad, "input crop meta: (%d, %d, %d, %d)",
         in_crop->x, in_crop->y, in_crop->width, in_crop->height);
-    if ((in_crop->x >= cpad->src_crop.w) || (in_crop->y >= cpad->src_crop.h)) {
+    if (video_meta) {
+      src_w = video_meta->width + video_meta->alignment.padding_left + video_meta->alignment.padding_right;
+      src_h = video_meta->height + video_meta->alignment.padding_top + video_meta->alignment.padding_bottom;
+    } else {
+      src_w = cpad->src_crop.w;
+      src_h = cpad->src_crop.h;
+    }
+    if ((in_crop->x >= src_w) || (in_crop->y >= src_h)) {
       return TRUE;
     }
 
     cpad->src_crop.x = in_crop->x;
     cpad->src_crop.y = in_crop->y;
-    cpad->src_crop.w = MIN(in_crop->width, (cpad->src_crop.w - in_crop->x));
-    cpad->src_crop.h = MIN(in_crop->height, (cpad->src_crop.h - in_crop->y));
+    cpad->src_crop.w = MIN(in_crop->width, (src_w - in_crop->x));
+    cpad->src_crop.h = MIN(in_crop->height, (src_h - in_crop->y));
+  } else {
+    cpad->src_crop.x = 0;
+    cpad->src_crop.y = 0;
+    cpad->src_crop.w = GST_VIDEO_INFO_WIDTH (&pad->info);
+    cpad->src_crop.h = GST_VIDEO_INFO_HEIGHT (&pad->info);
   }
 
   video_area.x = cpad->xpos;
@@ -619,17 +639,14 @@ gst_imxcompositor_pad_prepare_frame (GstVideoAggregatorPad * pad, GstVideoAggreg
               cpad->align.padding_right, cpad->align.padding_bottom);
         }
         gst_structure_free (config);
-      } else {
-        GstVideoMeta *video_meta = gst_buffer_get_video_meta (buffer);
-        if (video_meta) {
-          cpad->align.padding_left = video_meta->alignment.padding_left;
-          cpad->align.padding_top = video_meta->alignment.padding_top;
-          cpad->align.padding_right = video_meta->alignment.padding_right;
-          cpad->align.padding_bottom = video_meta->alignment.padding_bottom;
-          GST_DEBUG_OBJECT (pad, "video meta has alignment (%d, %d) , (%d, %d)",
-              cpad->align.padding_left, cpad->align.padding_top,
-              cpad->align.padding_right, cpad->align.padding_bottom);
-        }
+      } else if (video_meta) {
+        cpad->align.padding_left = video_meta->alignment.padding_left;
+        cpad->align.padding_top = video_meta->alignment.padding_top;
+        cpad->align.padding_right = video_meta->alignment.padding_right;
+        cpad->align.padding_bottom = video_meta->alignment.padding_bottom;
+        GST_DEBUG_OBJECT (pad, "video meta has alignment (%d, %d) , (%d, %d)",
+            cpad->align.padding_left, cpad->align.padding_top,
+            cpad->align.padding_right, cpad->align.padding_bottom);
       }
     } else {
       GstPhyMemMeta *phymemmeta = GST_PHY_MEM_META_GET (buffer);
