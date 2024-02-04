@@ -895,9 +895,12 @@ begin:
         }else if(core_ret == ACODEC_NOT_ENOUGH_DATA){
             break;
         } else if(core_ret==ACODEC_INIT_ERR){
+            gint64 qry_position;
             /* ACODEC_INIT_ERR is a fatal error, no need to try decoding again. */
             ret = GST_FLOW_EOS;
             beepdec->decoding_error = TRUE;
+            if (gst_pad_query_position (GST_BASE_SRC_PAD (beepdec), GST_FORMAT_TIME, &qry_position))
+                beepdec->last_timestamp = (guint64) qry_position;
             gst_pad_push_event (dec->srcpad, gst_event_new_gap (beepdec->last_timestamp, GST_CLOCK_TIME_NONE));
             GST_ERROR("core ret = ACODEC_INIT_ERR\n");
             goto bail;
@@ -912,7 +915,6 @@ begin:
                 out = gst_adapter_take_buffer (beepdec->adapter, adapter_size);
                 sent=TRUE;
                 ret = gst_audio_decoder_finish_frame (dec, out, 1);
-                beepdec->last_timestamp = GST_BUFFER_PTS (out);
                 gst_adapter_clear (beepdec->adapter);
             }
             beep_dec_handle_output_changed(beepdec);
@@ -931,7 +933,6 @@ begin:
            {
                 beepdec->in_cnt--;
                 ret = gst_audio_decoder_finish_frame (dec, temp_buffer, 1);
-                beepdec->last_timestamp = GST_BUFFER_PTS (temp_buffer);
                 sent = TRUE;
                 GST_LOG_OBJECT (beepdec,"output one frame[%d] size=%d",beepdec->in_cnt,out_size);
            }else{
@@ -962,7 +963,6 @@ begin:
         beepdec->in_cnt--;
         sent=TRUE;
         ret = gst_audio_decoder_finish_frame (dec, out, 1);
-        beepdec->last_timestamp = GST_BUFFER_PTS (out);
         gst_adapter_clear (beepdec->adapter);
         GST_LOG_OBJECT (beepdec,"output frames[%d] size=%d",beepdec->in_cnt,adapter_size);
     }else if (sent == FALSE && (!strcmp(IDecoder->name,"wma") ) ){
@@ -974,6 +974,9 @@ begin:
 
     if(beepdec->err_cnt > MAX_PROFILE_ERROR_COUNT) {
         if (!beepdec->decoding_error) {
+            gint64 qry_position;
+            if (gst_pad_query_position (GST_BASE_SRC_PAD (beepdec), GST_FORMAT_TIME, &qry_position))
+                beepdec->last_timestamp = (guint64) qry_position;
             gst_pad_push_event (dec->srcpad, gst_event_new_gap (beepdec->last_timestamp, GST_CLOCK_TIME_NONE));
             beepdec->decoding_error = TRUE;
         }
