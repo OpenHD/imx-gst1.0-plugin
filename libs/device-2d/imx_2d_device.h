@@ -46,6 +46,7 @@ typedef enum {
   IMX_2D_DEVICE_CAP_ALPHA        = 0x10,
   IMX_2D_DEVICE_CAP_BLEND        = 0x20,
   IMX_2D_DEVICE_CAP_OVERLAY      = 0x40,
+  IMX_2D_DEVICE_CAP_WARP         = 0x80,
   IMX_2D_DEVICE_CAP_ALL          = 0x1F
 } Imx2DDeviceCap;
 
@@ -90,6 +91,25 @@ typedef enum {
   IMX_2D_COLOR_MATRIX_BT2020
 } Imx2DColorMatrixType;
 
+typedef enum {
+  IMX_2D_WARP_MAP_PNT = 0,
+  IMX_2D_WARP_MAP_DPNT,
+  IMX_2D_WARP_MAP_DDPNT,
+  IMX_2D_WARP_MAP_NULL
+} Imx2DWarpMap;
+
+typedef enum {
+  IMX_2D_WARP_UNDEFINE = 0,
+  IMX_2D_WARP_PNT_32BPP,
+  IMX_2D_WARP_DPNT_32BPP,
+  IMX_2D_WARP_DPNT_16BPP,
+  IMX_2D_WARP_DPNT_8BPP,
+  IMX_2D_WARP_DDPNT_32BPP,
+  IMX_2D_WARP_DDPNT_16BPP,
+  IMX_2D_WARP_DDPNT_8BPP,
+  IMX_2D_WARP_DDPNT_4BPP,
+} Imx2DWarpAlgorithmsType;
+
 typedef struct {
   Imx2DColorRangeType range;
   Imx2DColorMatrixType matrix;
@@ -117,6 +137,29 @@ typedef struct _Imx2DVideoInfo {
   Imx2DTileType tile_type;
   Imx2DColorimetry colorimetry;
 } Imx2DVideoInfo;
+
+typedef struct _Imx2DVidoWarpArbitrary {
+  guint arb_start_x;
+  guint arb_start_y;
+  guint arb_delta_xx;
+  guint arb_delta_xy;
+  guint arb_delta_yx;
+  guint arb_delta_yy;
+} Imx2DVidoWarpArbitrary;
+
+typedef struct _Imx2DVideoWarp {
+  gboolean enable;
+  Imx2DWarpMap map_format;
+  gint width;
+  gint height;
+  gint bpp;
+  gchar *filename;
+  PhyMemBlock coordinates_mem;
+  gsize coordinates_size;
+  Imx2DVidoWarpArbitrary arb_info;
+  guint arb_num;
+  GstStructure *extra_controls;
+} Imx2DVideoWarp;
 
 typedef struct _Imx2DFrame {
   PhyMemBlock           *mem;
@@ -158,6 +201,7 @@ struct _Imx2DDevice {
   Imx2DRotationMode    (*get_rotate)              (Imx2DDevice* device);
   Imx2DDeinterlaceMode (*get_deinterlace)         (Imx2DDevice* device);
   gboolean (*check_conversion) (GstCaps *input_caps, GstCaps *output_caps);
+  gboolean (*config_warp_info) (Imx2DDevice* device, Imx2DVideoWarp *video_warp);
 };
 
 typedef struct _Imx2DDeviceInfo {

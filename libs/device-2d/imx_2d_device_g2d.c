@@ -27,11 +27,18 @@
 GST_DEBUG_CATEGORY_EXTERN (imx2ddevice_debug);
 #define GST_CAT_DEFAULT imx2ddevice_debug
 
+typedef struct _G2DVideoWarp {
+  gboolean enable;
+  gboolean is_ready;
+  struct g2d_warp_coordinates coord;
+} G2DVideoWarp;
+
 typedef struct _Imx2DDeviceG2d {
   gint capabilities;
   void *g2d_handle;
   struct g2d_surfaceEx src;
   struct g2d_surfaceEx dst;
+  G2DVideoWarp video_warp;
 } Imx2DDeviceG2d;
 
 typedef struct {
@@ -553,7 +560,21 @@ static gint imx_g2d_blit(Imx2DDevice *device,
     g2d_disable(g2d_handle, G2D_GLOBAL_ALPHA);
     g2d_disable(g2d_handle, G2D_BLEND);
   } else {
-    ret = g2d_blitEx(g2d_handle, &g2d->src, &g2d->dst);
+    if (!g2d->video_warp.enable) {
+      ret = g2d_blitEx(g2d_handle, &g2d->src, &g2d->dst);
+    } else {
+      if (!g2d->video_warp.is_ready) {
+        GST_WARNING ("Invalid video warp parameters");
+        ret = -1;
+        goto err;
+      }
+      GST_TRACE ("perform warp operation");
+      g2d_enable(g2d_handle, G2D_WARPING);
+      g2d_set_warp_coordinates(g2d_handle, &g2d->video_warp.coord);
+      ret = g2d_blit(g2d_handle, &g2d->src.base, &g2d->dst.base);
+
+      g2d_disable(g2d_handle, G2D_WARPING);
+    }
   }
 
   ret |= g2d_finish(g2d_handle);
@@ -627,6 +648,9 @@ static gint imx_g2d_get_capabilities (Imx2DDevice* device)
   gint capabilities = IMX_2D_DEVICE_CAP_SCALE|IMX_2D_DEVICE_CAP_CSC \
                       | IMX_2D_DEVICE_CAP_ROTATE | IMX_2D_DEVICE_CAP_ALPHA
                       | IMX_2D_DEVICE_CAP_BLEND;
+  if (IS_IMX95()) {
+    capabilities |= IMX_2D_DEVICE_CAP_WARP;
+  }
 
   return capabilities;
 }
@@ -768,6 +792,108 @@ static gboolean imx_g2d_check_conversion (GstCaps *input_caps, GstCaps *output_c
   return TRUE;
 }
 
+static gboolean imx_g2d_config_warp_info (Imx2DDevice *device, Imx2DVideoWarp *video_warp)
+{
+  Imx2DDeviceG2d *g2d = NULL;
+  gint can_warp = 0;
+  gsize file_size = 0;
+
+  if (!device || !device->priv || !video_warp)
+    return FALSE;
+
+  GST_TRACE("config warp \n");
+  /* 1. If disable video warp, return directly */
+  g2d = (Imx2DDeviceG2d *) (device->priv);
+  g2d->video_warp.enable = video_warp->enable;
+  if (!video_warp->enable) {
+    g2d->video_warp.is_ready = FALSE;
+    GST_TRACE("Disable warp function\n");
+    return TRUE;
+  }
+
+  /* 2. Check video warp parameters */
+  #define G2D_VIDEO_WARP_MAP_DPNT_ARB_PARAMS_NUM  2
+  #define G2D_VIDEO_WARP_MAP_DDPNT_ARB_PARAMS_NUM 6
+  if (!video_warp->coordinates_mem.size
+      || !video_warp->width
+      || !video_warp->height
+      || !video_warp->bpp
+      || video_warp->map_format == IMX_2D_WARP_MAP_NULL
+      || (video_warp->map_format == IMX_2D_WARP_MAP_DPNT
+      && video_warp->arb_num < G2D_VIDEO_WARP_MAP_DPNT_ARB_PARAMS_NUM)
+      || (video_warp->map_format == IMX_2D_WARP_MAP_DDPNT
+      && video_warp->arb_num < G2D_VIDEO_WARP_MAP_DDPNT_ARB_PARAMS_NUM)) {
+    return FALSE;
+  }
+
+  /* 3. Check coordinates file integrity */
+  file_size = video_warp->width * video_warp->height;
+  file_size *= video_warp->bpp / 8;
+  if (file_size != video_warp->coordinates_size) {
+    GST_TRACE("The file size doesn't match the actual configuration, "
+        "actual file size: %" G_GSIZE_FORMAT
+        ", config file size: %" G_GSIZE_FORMAT,
+        video_warp->coordinates_size, file_size);
+    return FALSE;
+  }
+
+  /* 4. Check whether g2d support video warp function */
+  g2d_query_feature(g2d->g2d_handle, G2D_WARP_DEWARP, &can_warp);
+  if (can_warp == 0) {
+    GST_WARNING("Don't support warp/dewarp operations\n");
+    return FALSE;
+  }
+
+  /* 5. Configure video warp parameters */
+  g2d->video_warp.coord.width = video_warp->width;
+  g2d->video_warp.coord.height = video_warp->height;
+  g2d->video_warp.coord.bpp = video_warp->bpp;
+  switch (video_warp->map_format) {
+    case IMX_2D_WARP_MAP_PNT:
+      g2d->video_warp.coord.format = G2D_WARP_MAP_PNT;
+      g2d->video_warp.coord.arb_start_x = 0;
+      g2d->video_warp.coord.arb_start_y = 0;
+      break;
+    case IMX_2D_WARP_MAP_DPNT:
+      g2d->video_warp.coord.format = G2D_WARP_MAP_DPNT;
+      g2d->video_warp.coord.arb_start_x  = video_warp->arb_info.arb_start_x;
+      g2d->video_warp.coord.arb_start_y  = video_warp->arb_info.arb_start_y;
+      break;
+    case IMX_2D_WARP_MAP_DDPNT:
+      g2d->video_warp.coord.format = G2D_WARP_MAP_DDPNT;
+      g2d->video_warp.coord.arb_start_x  = video_warp->arb_info.arb_start_x;
+      g2d->video_warp.coord.arb_start_y  = video_warp->arb_info.arb_start_y;
+      g2d->video_warp.coord.arb_delta_xx = video_warp->arb_info.arb_delta_xx;
+      g2d->video_warp.coord.arb_delta_xy = video_warp->arb_info.arb_delta_xy;
+      g2d->video_warp.coord.arb_delta_yx = video_warp->arb_info.arb_delta_yx;
+      g2d->video_warp.coord.arb_delta_yy = video_warp->arb_info.arb_delta_yy;
+      break;
+    default:
+      GST_WARNING("Invalid video warp map format\n");
+      return FALSE;
+  }
+
+  g2d->video_warp.coord.addr = (gintptr) video_warp->coordinates_mem.paddr;
+  g2d->video_warp.is_ready = TRUE;
+
+  GST_TRACE ("video warp, format: %d, width: %d, height: %d, bpp: %d"
+    "arb_start_x: 0x%x, arb_start_y: 0x%x,"
+    "arb_delta_xx: 0x%x, arb_delta_xy: 0x%x,"
+    "arb_delta_yx: 0x%x, arb_delta_yy: 0x%x",
+    g2d->video_warp.coord.format,
+    g2d->video_warp.coord.width,
+    g2d->video_warp.coord.height,
+    g2d->video_warp.coord.bpp,
+    g2d->video_warp.coord.arb_start_x,
+    g2d->video_warp.coord.arb_start_y,
+    g2d->video_warp.coord.arb_delta_xx,
+    g2d->video_warp.coord.arb_delta_xy,
+    g2d->video_warp.coord.arb_delta_yx,
+    g2d->video_warp.coord.arb_delta_yy);
+
+  return TRUE;
+}
+
 Imx2DDevice * imx_g2d_create(Imx2DDeviceType  device_type)
 {
   Imx2DDevice * device = g_slice_alloc(sizeof(Imx2DDevice));
@@ -799,6 +925,7 @@ Imx2DDevice * imx_g2d_create(Imx2DDeviceType  device_type)
   device->get_supported_in_fmts  = imx_g2d_get_supported_in_fmts;
   device->get_supported_out_fmts = imx_g2d_get_supported_out_fmts;
   device->check_conversion    = imx_g2d_check_conversion;
+  device->config_warp_info    = imx_g2d_config_warp_info;
 
   return device;
 }

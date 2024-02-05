@@ -45,6 +45,8 @@
 #define GST_IMX_VIDEO_COMPOMETA_DEFAULT              FALSE
 #define GST_IMX_VIDEO_COMPOMETA_IN_PLACE_DEFAULT     FALSE
 #define GST_IMX_VIDEO_VIDEOCROP_META_DEFAULT         FALSE
+#define GST_IMX_VIDEO_WARP_DEFAULT                   FALSE
+#define GST_IMX_VIDEO_WARP_MAP_DEFAULT               IMX_2D_WARP_MAP_NULL
 
 #define GST_IMX_CONVERT_UNREF_BUFFER(buffer) {\
     if (buffer) {                             \
@@ -70,7 +72,10 @@ enum {
   PROP_DEINTERLACE_MODE,
   PROP_COMPOSITION_META_ENABLE,
   PROP_COMPOSITION_META_IN_PLACE,
-  PROP_VIDEOCROP_META_ENABLE
+  PROP_VIDEOCROP_META_ENABLE,
+  PROP_VIDEO_WARP_ENABLE,
+  PROP_VIDEO_WARP_COORD_FILE,
+  PROP_VIDEO_WARP_EXTRA_CONTROLS
 };
 
 static GstElementClass *parent_class = NULL;
@@ -122,6 +127,318 @@ GType gst_imx_video_convert_deinterlace_get_type(void) {
   return gst_imx_video_convert_deinterlace_type;
 }
 
+static GstFlowReturn gst_imx_video_convert_probe_warp_header (GstImxVideoConvert *imxvct,
+     FILE *fp, gsize file_size, Imx2DVideoWarp *video_warp)
+{
+  Imx2DDevice *device = imxvct->device;
+  guint32 header_size = 0;
+  guint8 file_version = 0;
+  guint32 width,height;
+  GstBuffer *gstbuf;
+  GstMapInfo map;
+  guint32 map_data_size = 0;
+  Imx2DVidoWarpArbitrary *p_arb_info = NULL;
+  GstFlowReturn ret = GST_FLOW_ERROR;
+
+  #define WARP_HEADER_WIDTH           4
+  #define WARP_FILE_VERSION_WIDTH     1
+  #define WARP_ALOGITHMS_OFFSET       5
+  #define WARP_WIDTH_OFFSET           8
+  #define WARP_HEIGHT_OFFSET          12
+  #define WARP_ARB_START_X_OFFSET     16
+  #define WARP_ARB_START_Y_OFFSET     20
+  #define WARP_ARB_DELTA_XX_OFFSET    24
+  #define WARP_ARB_DELTA_XY_OFFSET    28
+  #define WARP_ARB_DELTA_YX_OFFSET    32
+  #define WARP_ARB_DELTA_YY_OFFSET    36
+  #define WARP_VERSION_1_HEADER_SZIE  40
+
+  if (!imxvct || !fp || !file_size || !video_warp ||
+      file_size < WARP_HEADER_WIDTH) {
+    goto exit;
+  }
+
+  /* Check header size */
+  if (fread(&header_size, 1, WARP_HEADER_WIDTH,
+      fp) != WARP_HEADER_WIDTH) {
+    GST_DEBUG_OBJECT (imxvct, "Can't read header size");
+    goto exit;
+  }
+
+  if (!header_size || file_size < header_size) {
+    goto exit;
+  }
+
+  if (fread(&file_version, 1, WARP_FILE_VERSION_WIDTH,
+      fp) != WARP_FILE_VERSION_WIDTH) {
+    GST_DEBUG_OBJECT (imxvct, "Can't read file format version");
+    goto exit;
+  } else {
+    if (file_version == 1) {
+      /* The header size is fixed for file version 1 */
+      if (header_size != WARP_VERSION_1_HEADER_SZIE) {
+        goto exit;
+      }
+    } else {
+      if (header_size < WARP_VERSION_1_HEADER_SZIE) {
+        goto exit;
+      }
+    }
+  }
+
+  gstbuf = gst_buffer_new_and_alloc (header_size);
+  gst_buffer_map (gstbuf, &map, GST_MAP_WRITE);
+  if (fread(map.data + WARP_ALOGITHMS_OFFSET, 1,
+      header_size - WARP_ALOGITHMS_OFFSET, fp) !=
+      header_size - WARP_ALOGITHMS_OFFSET) {
+    GST_DEBUG_OBJECT (imxvct, "Can't read header data");
+    goto done;
+  }
+
+  switch (map.data[WARP_ALOGITHMS_OFFSET]) {
+    case IMX_2D_WARP_PNT_32BPP:
+      video_warp->map_format = IMX_2D_WARP_MAP_PNT;
+      video_warp->bpp = 32;
+      ret = GST_FLOW_OK;
+      break;
+    case IMX_2D_WARP_DPNT_32BPP:
+      video_warp->map_format = IMX_2D_WARP_MAP_DPNT;
+      video_warp->bpp = 32;
+      ret = GST_FLOW_OK;
+      break;
+    case IMX_2D_WARP_DPNT_16BPP:
+      video_warp->map_format = IMX_2D_WARP_MAP_DPNT;
+      video_warp->bpp = 16;
+      ret = GST_FLOW_OK;
+      break;
+    case IMX_2D_WARP_DPNT_8BPP:
+      video_warp->map_format = IMX_2D_WARP_MAP_DPNT;
+      video_warp->bpp = 8;
+      ret = GST_FLOW_OK;
+      break;
+    case IMX_2D_WARP_DDPNT_32BPP:
+      video_warp->map_format = IMX_2D_WARP_MAP_DDPNT;
+      video_warp->bpp = 32;
+      ret = GST_FLOW_OK;
+      break;
+    case IMX_2D_WARP_DDPNT_16BPP:
+      video_warp->map_format = IMX_2D_WARP_MAP_DDPNT;
+      video_warp->bpp = 16;
+      ret = GST_FLOW_OK;
+      break;
+    case IMX_2D_WARP_DDPNT_8BPP:
+      video_warp->map_format = IMX_2D_WARP_MAP_DDPNT;
+      video_warp->bpp = 8;
+      ret = GST_FLOW_OK;
+      break;
+    case IMX_2D_WARP_DDPNT_4BPP:
+      video_warp->map_format = IMX_2D_WARP_MAP_DDPNT;
+      video_warp->bpp = 4;
+      ret = GST_FLOW_OK;
+      break;
+    default:
+      GST_DEBUG_OBJECT (imxvct, "Invalid algorithms type");
+      break;
+  }
+
+  /* Check file integrity */
+  width = GST_READ_UINT32_LE(map.data + WARP_WIDTH_OFFSET);
+  height = GST_READ_UINT32_LE(map.data + WARP_HEIGHT_OFFSET);
+  map_data_size = width * height * video_warp->bpp / 8;
+  if (ret != GST_FLOW_OK ||
+      ((map_data_size + header_size) != (guint32)file_size)) {
+    GST_DEBUG_OBJECT (imxvct, "Invalid header data");
+    goto done;
+  }
+
+  video_warp->width = width;
+  video_warp->height = height;
+  p_arb_info = &video_warp->arb_info;
+  switch (video_warp->map_format) {
+    case IMX_2D_WARP_MAP_PNT:
+      p_arb_info->arb_start_x = 0;
+      p_arb_info->arb_start_y = 0;
+      ret = GST_FLOW_OK;
+      break;
+    case IMX_2D_WARP_MAP_DPNT:
+      p_arb_info->arb_start_x = GST_READ_UINT32_LE(map.data + WARP_ARB_START_X_OFFSET);
+      p_arb_info->arb_start_y = GST_READ_UINT32_LE(map.data + WARP_ARB_START_Y_OFFSET);
+      video_warp->arb_num = 2;
+      ret = GST_FLOW_OK;
+      break;
+    case IMX_2D_WARP_MAP_DDPNT:
+      p_arb_info->arb_start_x = GST_READ_UINT32_LE(map.data + WARP_ARB_START_X_OFFSET);
+      p_arb_info->arb_start_y = GST_READ_UINT32_LE(map.data + WARP_ARB_START_Y_OFFSET);
+      p_arb_info->arb_delta_xx = GST_READ_UINT32_LE(map.data + WARP_ARB_DELTA_XX_OFFSET);
+      p_arb_info->arb_delta_xy = GST_READ_UINT32_LE(map.data + WARP_ARB_DELTA_XY_OFFSET);
+      p_arb_info->arb_delta_yx = GST_READ_UINT32_LE(map.data + WARP_ARB_DELTA_YX_OFFSET);
+      p_arb_info->arb_delta_yy = GST_READ_UINT32_LE(map.data + WARP_ARB_DELTA_YY_OFFSET);
+      video_warp->arb_num = 6;
+      ret = GST_FLOW_OK;
+      break;
+    default:
+      GST_DEBUG_OBJECT (imxvct, "Invalid warp map format");
+      ret = GST_FLOW_ERROR;
+      break;
+  }
+
+done:
+  gst_buffer_unmap (gstbuf, &map);
+  gst_buffer_unref (gstbuf);
+
+exit:
+  if (ret == GST_FLOW_OK) {
+    GST_DEBUG_OBJECT (imxvct, "Get header data");
+    video_warp->coordinates_size = file_size - header_size;
+    device->config_warp_info (device, video_warp);
+  } else {
+    GST_DEBUG_OBJECT (imxvct, "No header size info");
+    video_warp->coordinates_size = file_size;
+  }
+
+  return ret;
+}
+
+static GstFlowReturn gst_imx_video_convert_read_warp_cooordinates_file (GstImxVideoConvert *imxvct,
+    const char* file_name, Imx2DVideoWarp *video_warp)
+{
+  Imx2DDevice *device = imxvct->device;
+  PhyMemBlock *mem_blk = &video_warp->coordinates_mem;
+  FILE *fp;
+  gint ret = 0;
+  gsize size = 0;
+
+  if (!imxvct || !file_name || !video_warp)
+    return FALSE;
+
+  do {
+    fp = fopen (file_name, "rb");
+    if (fp == NULL) {
+      ret = -1;
+      GST_DEBUG_OBJECT (imxvct, "Can't open file, file name: %s", file_name);
+      break;
+    }
+
+    ret = fseek(fp, 0, SEEK_END);
+    if (ret) {
+      break;
+    }
+
+    size = ftell(fp);
+    if (size == 0) {
+      ret = -1;
+      break;
+    }
+
+    ret = fseek(fp, 0, SEEK_SET);
+    if (ret) {
+      break;
+    }
+
+    /* Probe header data*/
+    if (GST_FLOW_OK !=
+        gst_imx_video_convert_probe_warp_header (imxvct, fp, size, video_warp)) {
+      ret = fseek(fp, 0, SEEK_SET);
+      if (ret) {
+        break;
+      }
+    }
+    size = video_warp->coordinates_size;
+
+    if (mem_blk->size) {
+      device->free_mem (device, mem_blk);
+    }
+    mem_blk->size = size;
+    if (device->alloc_mem (imxvct->device, mem_blk)) {
+      ret = -1;
+      break;
+    }
+
+    if(fread(mem_blk->vaddr, 1, size, fp) != size) {
+      ret = -1;
+      break;
+    } else {
+      ret = 0;
+    }
+  } while (0);
+
+  if (fp)
+    fclose(fp);
+
+  if (ret) {
+    if (mem_blk->vaddr)
+      device->free_mem (device, mem_blk);
+    GST_DEBUG_OBJECT (imxvct, "read file failed: %s", file_name);
+    video_warp->coordinates_size = 0;
+    return GST_FLOW_ERROR;
+  } else {
+    return GST_FLOW_OK;
+  }
+}
+
+void gst_imx_video_convert_set_warp_controls (const GstStructure * config,
+    Imx2DVideoWarp *video_warp)
+{
+  g_return_if_fail (config != NULL);
+  g_return_if_fail (video_warp != NULL);
+
+  if (gst_structure_has_field(config, "map-format")) {
+    gst_structure_get(config, "map-format",
+        G_TYPE_INT, &video_warp->map_format, NULL);
+  }
+
+  if (gst_structure_has_field(config, "width")) {
+    gst_structure_get(config, "width",
+        G_TYPE_INT, &video_warp->width, NULL);
+  }
+
+  if (gst_structure_has_field(config, "height")) {
+    gst_structure_get(config, "height",
+        G_TYPE_INT, &video_warp->height, NULL);
+  }
+
+  if (gst_structure_has_field(config, "bpp")) {
+    gst_structure_get(config, "bpp",
+        G_TYPE_INT, &video_warp->bpp, NULL);
+  }
+
+  if (gst_structure_has_field(config, "arb_start_x")) {
+    gst_structure_get(config, "arb_start_x",
+        G_TYPE_INT, &video_warp->arb_info.arb_start_x, NULL);
+    video_warp->arb_num++;
+  }
+
+  if (gst_structure_has_field(config, "arb_start_y")) {
+    gst_structure_get(config, "arb_start_y",
+        G_TYPE_INT, &video_warp->arb_info.arb_start_y, NULL);
+    video_warp->arb_num++;
+  }
+
+  if (gst_structure_has_field(config, "arb_delta_xx")) {
+    gst_structure_get(config, "arb_delta_xx",
+        G_TYPE_INT, &video_warp->arb_info.arb_delta_xx, NULL);
+    video_warp->arb_num++;
+  }
+
+  if (gst_structure_has_field(config, "arb_delta_xy")) {
+    gst_structure_get(config, "arb_delta_xy",
+        G_TYPE_INT, &video_warp->arb_info.arb_delta_xy, NULL);
+    video_warp->arb_num++;
+  }
+
+  if (gst_structure_has_field(config, "arb_delta_yx")) {
+    gst_structure_get(config, "arb_delta_yx",
+        G_TYPE_INT, &video_warp->arb_info.arb_delta_yx, NULL);
+    video_warp->arb_num++;
+  }
+
+  if (gst_structure_has_field(config, "arb_delta_yy")) {
+    gst_structure_get(config, "arb_delta_yy",
+        G_TYPE_INT, &video_warp->arb_info.arb_delta_yy, NULL);
+    video_warp->arb_num++;
+  }
+}
+
 static void gst_imx_video_convert_set_property (GObject * object,
     guint prop_id, const GValue * value, GParamSpec * pspec)
 {
@@ -148,6 +465,31 @@ static void gst_imx_video_convert_set_property (GObject * object,
       break;
     case PROP_VIDEOCROP_META_ENABLE:
       imxvct->videocrop_meta_enable = g_value_get_boolean(value);
+      break;
+    case PROP_VIDEO_WARP_ENABLE:
+      imxvct->video_warp.enable = g_value_get_boolean(value);
+      device->config_warp_info (device, &imxvct->video_warp);
+      break;
+    case PROP_VIDEO_WARP_COORD_FILE:
+      const gchar * location = g_value_get_string (value);
+      if (location != NULL) {
+        g_free (imxvct->video_warp.filename);
+        imxvct->video_warp.filename = g_strdup (location);
+
+        if (gst_imx_video_convert_read_warp_cooordinates_file (imxvct,
+            imxvct->video_warp.filename, &imxvct->video_warp) == GST_FLOW_OK) {
+          device->config_warp_info (device, &imxvct->video_warp);
+        }
+      }
+      break;
+    case PROP_VIDEO_WARP_EXTRA_CONTROLS:
+      const GstStructure *config = gst_value_get_structure (value);
+      if (imxvct->video_warp.extra_controls)
+        gst_structure_free (imxvct->video_warp.extra_controls);
+
+      imxvct->video_warp.extra_controls = config ? gst_structure_copy (config) : NULL;
+      gst_imx_video_convert_set_warp_controls (config, &imxvct->video_warp);
+      device->config_warp_info (device, &imxvct->video_warp);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -183,6 +525,15 @@ static void gst_imx_video_convert_get_property (GObject * object,
     case PROP_VIDEOCROP_META_ENABLE:
       g_value_set_boolean(value, imxvct->videocrop_meta_enable);
       break;
+    case PROP_VIDEO_WARP_ENABLE:
+      g_value_set_boolean(value, imxvct->video_warp.enable);
+      break;
+    case PROP_VIDEO_WARP_COORD_FILE:
+      g_value_set_string (value, imxvct->video_warp.filename);
+      break;
+    case PROP_VIDEO_WARP_EXTRA_CONTROLS:
+      gst_value_set_structure (value, imxvct->video_warp.extra_controls);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
@@ -209,6 +560,14 @@ static void gst_imx_video_convert_finalize (GObject * object)
     gst_object_unref (imxvct->allocator);
     imxvct->allocator = NULL;
   }
+
+  if (imxvct->video_warp.extra_controls)
+    gst_structure_free (imxvct->video_warp.extra_controls);
+
+  if (imxvct->video_warp.coordinates_mem.size) {
+    imxvct->device->free_mem (imxvct->device, &imxvct->video_warp.coordinates_mem);
+  }
+  g_free (imxvct->video_warp.filename);
 
   if (imxvct->device) {
     imxvct->device->close(imxvct->device);
@@ -1288,6 +1647,9 @@ static gboolean imx_video_convert_set_info(GstVideoFilter *filter,
   if (imxvct->videocrop_meta_enable)
     gst_base_transform_set_passthrough((GstBaseTransform*)filter, FALSE);
 
+  if (imxvct->video_warp.enable)
+    gst_base_transform_set_passthrough((GstBaseTransform*)filter, FALSE);
+
   imxvct->pool_config_update = TRUE;
 
   GST_DEBUG ("set info from %" GST_PTR_FORMAT " to %" GST_PTR_FORMAT, in, out);
@@ -2030,6 +2392,25 @@ gst_imx_video_convert_class_init (GstImxVideoConvertClass * klass)
           "Enable videocrop meta processing",
           GST_IMX_VIDEO_VIDEOCROP_META_DEFAULT,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+    if (capabilities & IMX_2D_DEVICE_CAP_WARP) {
+      g_object_class_install_property (gobject_class, PROP_VIDEO_WARP_ENABLE,
+          g_param_spec_boolean("video-warp-enable", "video warp enable",
+              "Enable video warp",
+              GST_IMX_VIDEO_WARP_DEFAULT,
+              G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+      g_object_class_install_property (gobject_class, PROP_VIDEO_WARP_COORD_FILE,
+        g_param_spec_string ("video-warp-coord-file", "video warp coord file",
+            "Video warp coordinates file location", NULL,
+            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+            GST_PARAM_MUTABLE_READY));
+
+      g_object_class_install_property (gobject_class, PROP_VIDEO_WARP_EXTRA_CONTROLS,
+          g_param_spec_boxed ("video-warp-extra-controls", "Video warp extra controls",
+              "Extra the video warp parameters",
+              GST_TYPE_STRUCTURE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+    }
   }
 
   in_plugin->destroy(dev);
@@ -2086,6 +2467,9 @@ gst_imx_video_convert_init (GstImxVideoConvert * imxvct)
       imxvct->in_place = GST_IMX_VIDEO_COMPOMETA_IN_PLACE_DEFAULT;
       imxvct->videocrop_meta_enable = GST_IMX_VIDEO_VIDEOCROP_META_DEFAULT;
       imx_video_overlay_composition_init(&imxvct->video_comp, imxvct->device);
+      memset (&imxvct->video_warp, 0, sizeof(Imx2DVideoWarp));
+      imxvct->video_warp.enable = GST_IMX_VIDEO_WARP_DEFAULT;
+      imxvct->video_warp.map_format = GST_IMX_VIDEO_WARP_MAP_DEFAULT;
       imxvct->total_time = 0;
       imxvct->total_frames = 0;
     }
