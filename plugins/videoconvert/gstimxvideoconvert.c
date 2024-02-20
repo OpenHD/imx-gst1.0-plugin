@@ -370,6 +370,22 @@ static gint get_format_conversion_loss(GstBaseTransform * base,
   if (!in_info || !out_info)
     return G_MAXINT32;
 
+  in_flags = GST_VIDEO_FORMAT_INFO_FLAGS (in_info);
+  in_flags &= ~GST_VIDEO_FORMAT_FLAG_LE;
+  in_flags &= ~GST_VIDEO_FORMAT_FLAG_COMPLEX;
+  in_flags &= ~GST_VIDEO_FORMAT_FLAG_UNPACK;
+
+  out_flags = GST_VIDEO_FORMAT_INFO_FLAGS (out_info);
+  out_flags &= ~GST_VIDEO_FORMAT_FLAG_LE;
+  out_flags &= ~GST_VIDEO_FORMAT_FLAG_COMPLEX;
+  out_flags &= ~GST_VIDEO_FORMAT_FLAG_UNPACK;
+
+  /* when enable compistion meta, need limite output format to RGB */
+  if ((out_flags & COLORSPACE_MASK) == GST_VIDEO_FORMAT_FLAG_YUV
+      && imxvct->composition_meta_enable) {
+    return G_MAXINT32;
+  }
+
   /* Only OpenCL on DPU platform can convert NV12_10LE to NV12) */
   if (HAS_DPU ()) {
     if (in_name == GST_VIDEO_FORMAT_NV12_10BE_8L128 && out_name == GST_VIDEO_FORMAT_NV12)
@@ -387,21 +403,6 @@ static gint get_format_conversion_loss(GstBaseTransform * base,
         return G_MAXINT32;
       }
     }
-  }
-
-  in_flags = GST_VIDEO_FORMAT_INFO_FLAGS (in_info);
-  in_flags &= ~GST_VIDEO_FORMAT_FLAG_LE;
-  in_flags &= ~GST_VIDEO_FORMAT_FLAG_COMPLEX;
-  in_flags &= ~GST_VIDEO_FORMAT_FLAG_UNPACK;
-
-  out_flags = GST_VIDEO_FORMAT_INFO_FLAGS (out_info);
-  out_flags &= ~GST_VIDEO_FORMAT_FLAG_LE;
-  out_flags &= ~GST_VIDEO_FORMAT_FLAG_COMPLEX;
-  out_flags &= ~GST_VIDEO_FORMAT_FLAG_UNPACK;
-
-  if ((out_flags & COLORSPACE_MASK) == GST_VIDEO_FORMAT_FLAG_YUV
-      && imxvct->composition_meta_enable) {
-    return G_MAXINT32;
   }
 
   /* accept input format immediately without loss */
