@@ -492,6 +492,7 @@ static guint imx_video_convert_fixate_format_caps(GstBaseTransform *transform,
   const gchar *in_interlace;
   gboolean interlace = FALSE;
   GstCaps *new_caps;
+  const GValue *color = NULL;
 
   GstImxVideoConvert *imxvct = (GstImxVideoConvert *)(transform);
   Imx2DDevice *device = imxvct->device;
@@ -556,6 +557,8 @@ static guint imx_video_convert_fixate_format_caps(GstBaseTransform *transform,
           if (loss < min_loss) {
             out_info = gst_video_format_get_info(out_fmt);
             min_loss = loss;
+            if (gst_structure_has_field(tests, "colorimetry"))
+              color = gst_structure_get_value(tests, "colorimetry");
           }
 
           if (min_loss == 0)
@@ -568,6 +571,8 @@ static guint imx_video_convert_fixate_format_caps(GstBaseTransform *transform,
       if (loss < min_loss) {
         out_info = gst_video_format_get_info(out_fmt);
         min_loss = loss;
+        if (gst_structure_has_field(tests, "colorimetry"))
+          color = gst_structure_get_value(tests, "colorimetry");
       }
     }
 
@@ -586,14 +591,20 @@ static guint imx_video_convert_fixate_format_caps(GstBaseTransform *transform,
   }
 #endif
 
-  gst_caps_unref(new_caps);
-
   if (out_info) {
+    /* respect the colormetry of selected output conversion format,
+     * this is to avoid negotiation fail between converter and v4l2enc
+     * when outs format is YUV(RGB) but actual output format is RGB(YUV) */
+    if (gst_structure_get_value(outs, "colorimetry") && color)
+      gst_structure_set_value(outs, "colorimetry", color);
+    gst_caps_unref(new_caps);
+
     fmt_name = GST_VIDEO_FORMAT_INFO_NAME(out_info);
     gst_structure_set(outs, "format", G_TYPE_STRING, fmt_name, NULL);
     GST_LOG("out format %s", fmt_name);
     return 0;
   } else {
+    gst_caps_unref(new_caps);
     gst_structure_set(outs, "format", G_TYPE_STRING, "UNKNOWN", NULL);
     GST_LOG("out format not match");
     return -1;
