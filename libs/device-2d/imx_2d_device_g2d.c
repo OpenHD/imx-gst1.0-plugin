@@ -744,33 +744,10 @@ static gint imx_g2d_fill_color(Imx2DDevice *device, Imx2DFrame *dst,
   return ret;
 }
 
-static GstVideoFormat imx_g2d_extract_format (GstCaps * caps)
-{
-  gint i, caps_size;
-  GstStructure *st;
-  const GValue *format;
-  const gchar *fmt_name;
-
-  caps_size = gst_caps_get_size (caps);
-  for (i = 0; i < caps_size; i++) {
-    st = gst_caps_get_structure(caps, i);
-    if (!g_strcmp0 (gst_structure_get_string (st, "format"), "DMA_DRM")) {
-      format = gst_structure_get_value (st, "drm-format");
-    } else {
-      format = gst_structure_get_value (st, "format");
-    }
-
-    if (!GST_VALUE_HOLDS_LIST (format) && G_VALUE_HOLDS_STRING (format)) {
-      fmt_name = g_value_get_string (format);
-      return gst_video_format_from_string(fmt_name);
-    }
-  }
-
-  return GST_VIDEO_FORMAT_UNKNOWN;
-}
-
 static gboolean imx_g2d_check_conversion (GstCaps *input_caps, GstCaps *output_caps)
 {
+  GstVideoFormat in_format;
+  GstVideoFormat out_format;
   const G2dFmtMap *in_map = NULL;
   const G2dFmtMap *out_map = NULL;
 
@@ -778,19 +755,39 @@ static gboolean imx_g2d_check_conversion (GstCaps *input_caps, GstCaps *output_c
     return TRUE;
   }
 
-  in_map = imx_g2d_get_format(imx_g2d_extract_format(input_caps));
-  out_map = imx_g2d_get_format(imx_g2d_extract_format(output_caps));
+  /* Check whether the input and output caps have fixed format */
+  in_format = imx_g2d_device_get_fixed_format(input_caps);
+  out_format = imx_g2d_device_get_fixed_format(output_caps);
+  if (in_format == GST_VIDEO_FORMAT_UNKNOWN
+      || out_format == GST_VIDEO_FORMAT_UNKNOWN) {
+    GST_INFO ("No fixed input or output format, input caps %" GST_PTR_FORMAT
+        ", output_caps %" GST_PTR_FORMAT, input_caps, output_caps);
+    return TRUE;
+  }
+  GST_INFO ("input format: %s, output format: %s",
+      gst_video_format_to_string(in_format),
+      gst_video_format_to_string(out_format));
+
+  /* Check whether the input and output format are in the list */
+  in_map = imx_g2d_get_format(in_format);
+  out_map = imx_g2d_get_format(out_format);
   if (!in_map || !out_map) {
     GST_INFO ("No valid input or output format, input caps %" GST_PTR_FORMAT
         ", output_caps %" GST_PTR_FORMAT, input_caps, output_caps);
-    return FALSE;
+    return TRUE;
   }
 
-  if (out_map->g2d_format == G2D_NV12) {
-    if (in_map->g2d_format != G2D_YUYV) {
-      return FALSE;
-    } else {
+  /* Check the specified conversion map */
+  if (out_map->gst_video_format == GST_VIDEO_FORMAT_NV12) {
+    if (in_map->gst_video_format == GST_VIDEO_FORMAT_YUY2
+        || in_map->gst_video_format == GST_VIDEO_FORMAT_NV12_10BE_8L128
+        || in_map->gst_video_format == GST_VIDEO_FORMAT_NV12_10LE40) {
       return TRUE;
+    } else {
+      GST_INFO ("format (%s) -> format (%s) is not supported.",
+          gst_video_format_to_string(in_map->gst_video_format),
+          gst_video_format_to_string(out_map->gst_video_format));
+      return FALSE;
     }
   }
 

@@ -838,6 +838,49 @@ static GstCaps* imx_video_convert_caps_from_fmt_list(GList* list)
   return caps;
 }
 
+static gboolean imx_video_convert_check_format_conversion (GstBaseTransform *transform,
+    GstVideoFormat in_fmt, GstVideoFormat out_fmt, GstCaps *in_caps, GstCaps *out_caps, guint i)
+{
+  GstImxVideoConvert *imxvct = (GstImxVideoConvert *)(transform);
+  Imx2DDevice *device = imxvct->device;
+  gboolean is_support = TRUE;
+
+  if ((device->device_type == IMX_2D_DEVICE_OCL)
+      || ((device->device_type == IMX_2D_DEVICE_G2D) && HAS_DPU())) {
+    GstCaps *select_caps = gst_caps_copy_nth(out_caps, i);
+    GstStructure *select_st = gst_caps_get_structure(select_caps, 0);
+
+    gst_structure_set(select_st, "format", G_TYPE_STRING,
+        gst_video_format_to_string(out_fmt), NULL);
+    GST_DEBUG_OBJECT (imxvct, "Check format conversion, select caps: %" GST_PTR_FORMAT, select_caps);
+
+    if (!device->check_conversion (in_caps, select_caps)) {
+      GST_DEBUG_OBJECT (imxvct, "Current device can't support conversion: %d->%d", in_fmt, out_fmt);
+      is_support = FALSE;
+      goto done;
+    }
+
+    if (!gst_caps_is_fixed (select_caps)) {
+      select_caps = gst_caps_fixate (select_caps);
+      GST_DEBUG("fixated select_caps to %" GST_PTR_FORMAT, select_caps);
+      if (!gst_caps_is_fixed (select_caps)) {
+        GST_DEBUG("Not fixed caps: %" GST_PTR_FORMAT, select_caps);
+        is_support = FALSE;
+        goto done;
+      }
+    }
+
+    if (!gst_pad_peer_query_accept_caps (GST_BASE_TRANSFORM_SRC_PAD (transform), select_caps)) {
+      GST_DEBUG_OBJECT (imxvct, "Downstream can't support conversion: %d->%d", in_fmt, out_fmt);
+      is_support = FALSE;
+    }
+done:
+  gst_caps_unref (select_caps);
+  }
+
+  return is_support;
+}
+
 static guint imx_video_convert_fixate_format_caps(GstBaseTransform *transform,
                                             GstCaps *caps, GstCaps *othercaps)
 {
@@ -913,6 +956,14 @@ static guint imx_video_convert_fixate_format_caps(GstBaseTransform *transform,
         if (G_VALUE_HOLDS_STRING(val)) {
           out_fmt = gst_video_format_from_string(g_value_get_string(val));
           loss = get_format_conversion_loss(transform, in_fmt, out_fmt);
+
+          /* Need check if current device and the downstream can accept this format
+           * because some devices can only support the specified format conversion */
+          if (!imx_video_convert_check_format_conversion (transform, in_fmt, out_fmt,
+              caps, new_caps, i)) {
+            continue;
+          }
+
           if (loss < min_loss) {
             out_info = gst_video_format_get_info(out_fmt);
             min_loss = loss;
@@ -927,6 +978,14 @@ static guint imx_video_convert_fixate_format_caps(GstBaseTransform *transform,
     } else if (G_VALUE_HOLDS_STRING(format)) {
       out_fmt = gst_video_format_from_string(g_value_get_string(format));
       loss = get_format_conversion_loss(transform, in_fmt, out_fmt);
+
+      /* Need check if current device and the downstream can accept this format
+       * because some devices can only support the specified format conversion */
+      if (!imx_video_convert_check_format_conversion (transform, in_fmt, out_fmt,
+          caps, new_caps, i)) {
+        continue;
+      };
+
       if (loss < min_loss) {
         out_info = gst_video_format_get_info(out_fmt);
         min_loss = loss;

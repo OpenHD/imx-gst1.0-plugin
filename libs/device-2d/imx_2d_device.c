@@ -133,3 +133,58 @@ gint imx_2d_device_destroy(Imx2DDevice *device)
   GST_ERROR("Unknown 2D device type %d\n", device->device_type);
   return -1;
 }
+
+GstVideoFormat imx_g2d_device_get_fixed_format (GstCaps * caps)
+{
+  gint i, caps_size;
+  GstStructure *st;
+  const GValue *format;
+  const gchar *fmt_name;
+  GstVideoFormat out_fmt = GST_VIDEO_FORMAT_UNKNOWN;
+
+  caps_size = gst_caps_get_size (caps);
+  for (i = 0; i < caps_size; i++) {
+    st = gst_caps_get_structure(caps, i);
+
+    if (!g_strcmp0 (gst_structure_get_string (st, "format"), "DMA_DRM")) {
+      format = gst_structure_get_value (st, "drm-format");
+    } else {
+      format = gst_structure_get_value (st, "format");
+    }
+
+    /* Check the selected caps if it has the fixed format */
+    if (GST_VALUE_HOLDS_LIST (format)) {
+      if (gst_value_list_get_size (format) == 1) {
+        const GValue *val;
+        val = gst_value_list_get_value (format, 0);
+        if (!G_VALUE_HOLDS_STRING (val)) {
+          out_fmt = GST_VIDEO_FORMAT_UNKNOWN;
+          GST_TRACE ("No valid format in the list");
+          break;
+        }
+        /* Has the fixed format and get it below */
+        format = val;
+      } else {
+        out_fmt = GST_VIDEO_FORMAT_UNKNOWN;
+        GST_TRACE ("No fixed format in the list");
+        break;
+      }
+    }
+
+    /* Get the fixed format in the selected caps */
+    if (G_VALUE_HOLDS_STRING (format)) {
+      fmt_name = g_value_get_string (format);
+
+      if (out_fmt == GST_VIDEO_FORMAT_UNKNOWN) {
+        /* Record the first fixed format */
+        out_fmt = gst_video_format_from_string(fmt_name);
+      } else if (out_fmt != gst_video_format_from_string(fmt_name)) {
+        out_fmt = GST_VIDEO_FORMAT_UNKNOWN;
+        GST_TRACE ("No fixed format in the caps");
+        break;
+      }
+    }
+  }
+
+  return out_fmt;
+}

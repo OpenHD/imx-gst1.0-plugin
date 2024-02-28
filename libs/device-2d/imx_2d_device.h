@@ -224,5 +224,6 @@ typedef struct _Imx2DDeviceInfo {
 const Imx2DDeviceInfo * imx_get_2d_devices(void);
 Imx2DDevice * imx_2d_device_create(Imx2DDeviceType  device_type);
 gint imx_2d_device_destroy(Imx2DDevice *device);
+GstVideoFormat imx_g2d_device_get_fixed_format (GstCaps * caps);
 
 #endif /* __IMX_2D_DEVICE_H__ */

@@ -529,50 +529,43 @@ static GList* imx_ocl_get_supported_fmts (OCL_PORT port)
   return list;
 }
 
-static GstVideoFormat imx_ocl_get_format (GstCaps * caps)
-{
-  gint i, caps_size;
-  GstStructure *st;
-  const GValue *format;
-  const gchar *fmt_name;
-
-  caps_size = gst_caps_get_size (caps);
-  for (i = 0; i < caps_size; i++) {
-    st = gst_caps_get_structure(caps, i);
-    if (!g_strcmp0 (gst_structure_get_string (st, "format"), "DMA_DRM")) {
-      format = gst_structure_get_value (st, "drm-format");
-    } else {
-      format = gst_structure_get_value (st, "format");
-    }
-
-    if (!GST_VALUE_HOLDS_LIST (format) && G_VALUE_HOLDS_STRING (format)) {
-      fmt_name = g_value_get_string (format);
-      return gst_video_format_from_string(fmt_name);
-    }
-  }
-
-  return GST_VIDEO_FORMAT_UNKNOWN;
-}
-
 static gboolean imx_ocl_check_conversion (GstCaps *input_caps, GstCaps *output_caps)
 {
   OCL_PIXEL_FORMAT_GROUP *p_group;
   int fmt_num = 0;
   int i = 0;
+  GstVideoFormat in_format;
+  GstVideoFormat out_format;
+  const OclFmtMap *in_map;
+  const OclFmtMap *out_map;
   OCL_PIXEL_FORMAT in_pixel_format;
   OCL_PIXEL_FORMAT out_pixel_format;
 
-  const OclFmtMap *in_map = imx_ocl_get_format_map (imx_ocl_get_format(input_caps));
-  const OclFmtMap *out_map = imx_ocl_get_format_map (imx_ocl_get_format(output_caps));
+  /* Check whether the input and output caps have fixed format */
+  in_format = imx_g2d_device_get_fixed_format(input_caps);
+  out_format = imx_g2d_device_get_fixed_format(output_caps);
+  if (in_format == GST_VIDEO_FORMAT_UNKNOWN
+      || out_format == GST_VIDEO_FORMAT_UNKNOWN) {
+    GST_INFO ("No fixed input or output format, input caps %" GST_PTR_FORMAT
+        ", output_caps %" GST_PTR_FORMAT, input_caps, output_caps);
+    return TRUE;
+  }
+  GST_INFO ("input format: %s, output format: %s",
+      gst_video_format_to_string(in_format),
+      gst_video_format_to_string(out_format));
 
+  /* Check whether the input and output format are in the list */
+  in_map = imx_ocl_get_format_map (in_format);
+  out_map = imx_ocl_get_format_map (out_format);
   if (!in_map || !out_map) {
     GST_INFO ("No valid input or output format, input caps %" GST_PTR_FORMAT
         ", output_caps %" GST_PTR_FORMAT, input_caps, output_caps);
-    return FALSE;
+    return TRUE;
   }
   in_pixel_format = in_map->ocl_pixel_format;
   out_pixel_format = out_map->ocl_pixel_format;
 
+  /* Check the specified conversion map */
   if (!IS_AMPHION()) {
     if (in_pixel_format == OCL_FORMAT_NV12_TILED
         || in_pixel_format == OCL_FORMAT_NV15_TILED) {
