@@ -1847,6 +1847,24 @@ static GstFlowReturn imx_video_convert_transform(GstBaseTransform * trans, GstBu
     }
   }
 
+  if (imxvct->video_meta_check) {
+    if (video_meta) {
+      if (imxvct->in_video_align.padding_left != video_meta->alignment.padding_left ||
+          imxvct->in_video_align.padding_right != video_meta->alignment.padding_right ||
+          imxvct->in_video_align.padding_top != video_meta->alignment.padding_top ||
+          imxvct->in_video_align.padding_bottom != video_meta->alignment.padding_bottom) {
+        GST_INFO_OBJECT (imxvct, "input videometa alignment changes to (%d, %d) , (%d, %d)",
+            video_meta->alignment.padding_left,
+            video_meta->alignment.padding_top,
+            video_meta->alignment.padding_right,
+            video_meta->alignment.padding_bottom);
+        imxvct->in_video_align = video_meta->alignment;
+      }
+    } else {
+      memset (&imxvct->in_video_align, 0, sizeof(GstVideoAlignment));
+    }
+  }
+
   if (imxvct->pool_config_update) {
     //alignment check
     memset (&imxvct->in_video_align, 0, sizeof(GstVideoAlignment));
@@ -1879,6 +1897,7 @@ static GstFlowReturn imx_video_convert_transform(GstBaseTransform * trans, GstBu
           video_meta->alignment.padding_right,
           video_meta->alignment.padding_bottom);
       imxvct->in_video_align = video_meta->alignment;
+      imxvct->video_meta_check = TRUE;
     }
 
     if (imxvct->out_pool) {
@@ -2461,6 +2480,7 @@ gst_imx_video_convert_init (GstImxVideoConvert * imxvct)
       imxvct->out_pool = NULL;
       imxvct->self_out_pool = NULL;
       imxvct->pool_config_update = TRUE;
+      imxvct->video_meta_check = FALSE;
       imxvct->rotate = IMX_2D_ROTATION_0;
       imxvct->deinterlace = IMX_2D_DEINTERLACE_NONE;
       imxvct->composition_meta_enable = GST_IMX_VIDEO_COMPOMETA_DEFAULT;

@@ -48,6 +48,7 @@ typedef struct _GstImxVideoConvert {
   GstVideoAlignment in_video_align;
   GstVideoAlignment out_video_align;
   gboolean pool_config_update;
+  gboolean video_meta_check;
   Imx2DRotationMode rotate;
   Imx2DDeinterlaceMode deinterlace;
   GstImxVideoOverlayComposition video_comp;
