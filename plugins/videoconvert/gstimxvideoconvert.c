@@ -1914,18 +1914,6 @@ static GstFlowReturn imx_video_convert_transform(GstBaseTransform * trans, GstBu
           imxvct->out_video_align.padding_top,
           imxvct->out_video_align.padding_right,
           imxvct->out_video_align.padding_bottom);
-
-          /* Update output buffer alignment information
-           * because some plugins such as imxcompositor need it */
-          GstVideoMeta *video_meta;
-          video_meta = gst_buffer_get_video_meta (outbuf);
-          if (video_meta) {
-            video_meta->alignment.padding_left = imxvct->out_video_align.padding_left;
-            video_meta->alignment.padding_top = imxvct->out_video_align.padding_top;
-            video_meta->alignment.padding_right = imxvct->out_video_align.padding_right;
-            video_meta->alignment.padding_bottom = imxvct->out_video_align.padding_bottom;
-            GST_DEBUG_OBJECT (imxvct, "update output buffer alignment");
-          }
       }
 
       gst_structure_free (config);
@@ -1941,6 +1929,21 @@ static GstFlowReturn imx_video_convert_transform(GstBaseTransform * trans, GstBu
     }
 
     imxvct->pool_config_update = FALSE;
+  }
+
+  /* Update output buffer alignment information
+    * because some plugins such as imxcompositor need it */
+  GstVideoMeta *out_video_meta;
+  out_video_meta = gst_buffer_get_video_meta (outbuf);
+  if (out_video_meta) {
+    out_video_meta->alignment.padding_left = imxvct->out_video_align.padding_left;
+    out_video_meta->alignment.padding_top = imxvct->out_video_align.padding_top;
+    out_video_meta->alignment.padding_right = imxvct->out_video_align.padding_right;
+    out_video_meta->alignment.padding_bottom = imxvct->out_video_align.padding_bottom;
+    GST_DEBUG_OBJECT (imxvct, "update output buffer alignment, %ux%u (%u,%u,%u,%u)",
+        out_video_meta->width, out_video_meta->height,
+        out_video_meta->alignment.padding_left, out_video_meta->alignment.padding_right,
+        out_video_meta->alignment.padding_top, out_video_meta->alignment.padding_bottom);
   }
 
   src.info.fmt = GST_VIDEO_INFO_FORMAT(&in_info);
@@ -2109,6 +2112,14 @@ static GstFlowReturn imx_video_convert_transform(GstBaseTransform * trans, GstBu
     dst.crop.y += out_crop->y;
     dst.crop.w = MIN(out_crop->width, filter->out_info.width);
     dst.crop.h = MIN(out_crop->height, filter->out_info.height);
+  } else {
+      out_crop = gst_buffer_add_video_crop_meta (outbuf);
+      out_crop->x = imxvct->out_video_align.padding_left;
+      out_crop->y = imxvct->out_video_align.padding_top;
+      out_crop->width = filter->out_info.width;
+      out_crop->height = filter->out_info.height;
+      GST_DEBUG_OBJECT (imxvct, "crop, %ux%u (%u,%u)",
+          out_crop->width, out_crop->height, out_crop->x, out_crop->y);
   }
 
   if (!src.mem->paddr)
