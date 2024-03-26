@@ -28,6 +28,7 @@ endif
 have_g2d = false
 have_vpuwrapper = false
 have_v4l2 = false
+have_asrc = false
 if cc.has_header('g2d.h')
   have_g2d = true
 endif
@@ -36,6 +37,9 @@ if cc.has_header('vpu_wrapper.h', dependencies: vpuwrap_dep)
 endif
 if cc.has_header('linux/videodev2.h')
   have_v4l2 = true
+endif
+if cc.has_header('linux/mxc_asrc.h') and cc.has_header('alsa/asoundlib.h')
+  have_asrc=true
 endif
 
 if build_MX6 == 'yes'
@@ -90,6 +94,9 @@ elif build_MX7ULP == 'yes'
   endif
 elif build_MX8 == 'yes' or build_MX9 == 'yes'
   subdir('spdifdemux')
+  if have_asrc
+    subdir('imxasrc')
+  endif
   if have_vpuwrapper
     subdir('vpu')
   endif
