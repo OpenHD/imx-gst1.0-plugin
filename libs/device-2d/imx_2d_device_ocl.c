@@ -531,7 +531,12 @@ static GstVideoFormat imx_ocl_get_format (GstCaps * caps)
   caps_size = gst_caps_get_size (caps);
   for (i = 0; i < caps_size; i++) {
     st = gst_caps_get_structure(caps, i);
-    format = gst_structure_get_value (st, "format");
+    if (!g_strcmp0 (gst_structure_get_string (st, "format"), "DMA_DRM")) {
+      format = gst_structure_get_value (st, "drm-format");
+    } else {
+      format = gst_structure_get_value (st, "format");
+    }
+
     if (!GST_VALUE_HOLDS_LIST (format) && G_VALUE_HOLDS_STRING (format)) {
       fmt_name = g_value_get_string (format);
       return gst_video_format_from_string(fmt_name);
