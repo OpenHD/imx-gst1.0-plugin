@@ -776,6 +776,36 @@ static void beep_dec_handle_output_changed(GstBeepDec *beepdec)
     }while(0);
 
 }
+static gboolean beepdec_send_gap_event (GstAudioDecoder * dec, GstClockTime ts)
+{
+    GstBeepDec *beepdec = GST_BEEP_DEC (dec);
+
+    if (dec->output_segment.rate < 0) {
+        GST_LOG_OBJECT (beepdec, "reverse playback");
+        return FALSE;
+    }
+
+    if (!GST_CLOCK_TIME_IS_VALID(ts)) {
+        /* The output segment position will update when sending decoded buffer */
+        if (GST_CLOCK_TIME_IS_VALID (dec->output_segment.position)) {
+            beepdec->last_timestamp = dec->output_segment.position;
+        }
+        goto done;
+    }
+
+    if (!GST_CLOCK_TIME_IS_VALID (beepdec->last_timestamp) ||
+        ts > beepdec->last_timestamp) {
+        beepdec->last_timestamp = ts;
+    }
+
+done:
+    GST_LOG_OBJECT (beepdec, "send gap event, start %" GST_TIME_FORMAT,
+        GST_TIME_ARGS (beepdec->last_timestamp));
+    gst_pad_send_event (dec->sinkpad, gst_event_new_gap (beepdec->last_timestamp, GST_CLOCK_TIME_NONE));
+
+    return TRUE;
+}
+
 static GstFlowReturn beep_dec_handle_frame (GstAudioDecoder * dec,
     GstBuffer * buffer)
 {
@@ -796,6 +826,7 @@ static GstFlowReturn beep_dec_handle_frame (GstAudioDecoder * dec,
     GstMapInfo map;
     beepdec = GST_BEEP_DEC (dec);
     gboolean sent = FALSE;
+    GstClockTime buf_pts = GST_CLOCK_TIME_NONE;
     if(!beepdec)
         goto bail;
 
@@ -817,6 +848,7 @@ static GstFlowReturn beep_dec_handle_frame (GstAudioDecoder * dec,
         else
             goto bail;
     }
+    buf_pts = GST_BUFFER_PTS (buffer);
 
     inbuf_size = gst_buffer_get_size(buffer);
 
@@ -870,7 +902,8 @@ begin:
 
     do{
         if (beepdec->decoding_error == TRUE) {
-          break;
+            beepdec_send_gap_event (dec, buf_pts);
+            break;
         }
         outbuf = NULL;
         out_size = 0;
@@ -895,13 +928,10 @@ begin:
         }else if(core_ret == ACODEC_NOT_ENOUGH_DATA){
             break;
         } else if(core_ret==ACODEC_INIT_ERR){
-            gint64 qry_position;
             /* ACODEC_INIT_ERR is a fatal error, no need to try decoding again. */
-            ret = GST_FLOW_EOS;
+            ret = GST_FLOW_OK;
             beepdec->decoding_error = TRUE;
-            if (gst_pad_query_position (GST_BASE_SRC_PAD (beepdec), GST_FORMAT_TIME, &qry_position))
-                beepdec->last_timestamp = (guint64) qry_position;
-            gst_pad_push_event (dec->srcpad, gst_event_new_gap (beepdec->last_timestamp, GST_CLOCK_TIME_NONE));
+            beepdec_send_gap_event (dec, GST_CLOCK_TIME_NONE);
             GST_ERROR("core ret = ACODEC_INIT_ERR\n");
             goto bail;
         }
@@ -974,13 +1004,10 @@ begin:
 
     if(beepdec->err_cnt > MAX_PROFILE_ERROR_COUNT) {
         if (!beepdec->decoding_error) {
-            gint64 qry_position;
-            if (gst_pad_query_position (GST_BASE_SRC_PAD (beepdec), GST_FORMAT_TIME, &qry_position))
-                beepdec->last_timestamp = (guint64) qry_position;
-            gst_pad_push_event (dec->srcpad, gst_event_new_gap (beepdec->last_timestamp, GST_CLOCK_TIME_NONE));
+            beepdec_send_gap_event (dec, GST_CLOCK_TIME_NONE);
             beepdec->decoding_error = TRUE;
         }
-        ret = GST_FLOW_EOS;
+        ret = GST_FLOW_OK;
     }
 
 bail:

@@ -93,7 +93,7 @@ struct _GstBeepDec
     gint in_cnt;
     gboolean decoding_error;
     gboolean dsp_dec;       /* use hifi decoder or not*/
-    guint64 last_timestamp;
+    GstClockTime last_timestamp;
 };
 
 struct _GstBeepDecClass
