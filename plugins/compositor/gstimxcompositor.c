@@ -1662,9 +1662,11 @@ static GstCaps* imx_compositor_caps_from_fmt_list(GList* list, gboolean is_input
     GstVideoFormat fmt = (GstVideoFormat)g_list_nth_data(list, i);
     /* OpenCL based g2d can't support multi instance. disable is for compositor */
     if (HAS_DPU ()) {
+      const GstVideoFormatInfo *info = gst_video_format_get_info(fmt);
+      GstVideoFormatFlags fmt_flags = GST_VIDEO_FORMAT_INFO_FLAGS (info);
       if (is_input && fmt == GST_VIDEO_FORMAT_NV12_10LE40)
         continue;
-      if (!is_input && fmt == GST_VIDEO_FORMAT_NV12)
+      if (!is_input && (fmt_flags & GST_VIDEO_FORMAT_FLAG_YUV))
         continue;
     }
     if (caps) {
