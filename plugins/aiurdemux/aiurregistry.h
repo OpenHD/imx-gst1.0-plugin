@@ -76,6 +76,7 @@ typedef struct
   FslParserGetVideoFrameHeight getVideoFrameHeight;
   FslParserGetVideoFrameRate getVideoFrameRate;
   FslParserGetVideoFrameRotation getVideoFrameRotation;
+  FslParserGetVideoScanType getVideoScanType;
 
   /* audio properties */
   FslParserGetAudioNumChannels getAudioNumChannels;

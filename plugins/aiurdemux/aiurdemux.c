@@ -2444,6 +2444,7 @@ static void aiurdemux_parse_video (GstAiurDemux * demux, AiurDemuxStream * strea
   gchar *padname;
 
   int32 parser_ret = PARSER_SUCCESS;
+  int32 parser_scan_type_ret = PARSER_ERR_UNKNOWN;
   AiurCoreInterface *IParser = demux->core_interface;
   FslParserHandle handle = demux->core_handle;
   AiurdemuxCodecStruct * codec_struct = NULL;
@@ -2467,6 +2468,9 @@ static void aiurdemux_parse_video (GstAiurDemux * demux, AiurDemuxStream * strea
 
   if(parser_ret != PARSER_SUCCESS)
       goto bail;
+
+  if (IParser->getVideoScanType)
+    parser_scan_type_ret = IParser->getVideoScanType(handle, track_index, &stream->info.video.scan_type);
 
   if ((stream->info.video.fps_n == 0) || (stream->info.video.fps_d == 0) 
       || (stream->info.video.fps_n /stream->info.video.fps_d) > 250) {
@@ -2535,6 +2539,11 @@ static void aiurdemux_parse_video (GstAiurDemux * demux, AiurDemuxStream * strea
     ("%s, width=(int)%u, height=(int)%u, framerate=(fraction)%u/%u",
     mime, stream->info.video.width, stream->info.video.height,
     stream->info.video.fps_n, stream->info.video.fps_d);
+  }
+  if (parser_scan_type_ret == PARSER_SUCCESS) {
+    mime = g_strdup_printf
+    ("%s, interlace-mode=(string)%s",
+    mime, stream->info.video.scan_type == VIDEO_SCAN_PROGRESSIVE ? "progressive" : "interleaved");
   }
   stream->caps = gst_caps_from_string (mime);
   g_free (mime);

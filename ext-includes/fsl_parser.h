@@ -2,7 +2,7 @@
 
 /*
 * Copyright (c) 2009-2016, Freescale Semiconductor, Inc. 
-* Copyright 2017-2023 NXP
+* Copyright 2017-2024 NXP
  */
 
 /*
@@ -169,6 +169,20 @@ enum
 };
 
 
+/*********************************************************************
+ * Video Scan type
+ * a. Progressive
+ *      Lines of visual information are displayed across the viewer's TV screen.
+ *      All of the lines that make up a single frame are transmitted at once.
+ * b. Interlaced
+ *      Lines of visual information are alternated as odds and evens.
+ *      Only half of a frame's visual information is broadcast at a time
+ ********************************************************************/
+enum
+{
+    VIDEO_SCAN_PROGRESSIVE = 0,
+    VIDEO_SCAN_INTERLACED
+};
 
 
 /*********************************************************************
@@ -801,6 +815,8 @@ typedef    int32 (*FslParserGetVideoFrameCount)(FslParserHandle parserHandle, ui
 
 typedef    int32 (*FslParserGetVideoThumbnailTime)(FslParserHandle parserHandle, uint32 trackNum, uint64 *outTs);
 
+typedef    int32 (*FslParserGetVideoScanType)(FslParserHandle parserHandle, uint32 trackNum, uint32 *scanType);
+
 /************************************************************************************************************
  *
  *               Audio Properties
@@ -1055,9 +1071,10 @@ enum /* API function ID */
 
     PARSER_API_SEEK  = 120,
 
-    PARSER_API_FLUSH_TRACK  = 121
+    PARSER_API_FLUSH_TRACK  = 121,
 
-
+    /* extended video properties */
+    PARSER_API_GET_VIDEO_SCAN_TYPE = 150
 };
 
 /* prototype of entry point */
