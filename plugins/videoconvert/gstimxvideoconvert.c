@@ -1782,8 +1782,10 @@ imx_video_convert_accept_caps (GstBaseTransform * transform,
         }
         GST_DEBUG_OBJECT (transform, "query caps %" GST_PTR_FORMAT
             ", accept-caps result: %d", rescaps, ret);
-        gst_query_unref (query);
-        return ret;
+        if (!ret) {
+          gst_query_unref (query);
+          return ret;
+        }
       }
     }
     gst_query_unref (query);
