@@ -48,6 +48,8 @@ typedef enum ocl_pixel_format{
     OCL_FORMAT_RGB888 = 3,
     OCL_FORMAT_RGB565 = 4,
     OCL_FORMAT_BGRA8888 = 5,
+    OCL_FORMAT_BGR888 = 6,
+    OCL_FORMAT_BGRX8888 = 7,
     OCL_FORMAT_P010 = 10,
     OCL_FORMAT_I420 = 11,
     OCL_FORMAT_NV12 = 12,
@@ -80,6 +82,8 @@ typedef enum ocl_range{
 typedef enum ocl_port{
     OCL_PORT_TYPE_INPUT = 0,
     OCL_PORT_TYPE_OUTPUT,
+    OCL_PORT_TYPE_WARP,
+    OCL_PORT_TYPE_INPUT_DUP,
     OCL_PORT_TYPE_TOTAL,
 }OCL_PORT;
 
@@ -106,19 +110,19 @@ typedef struct ocl_buffer_plane{
     long long paddr;
     int size;
     int length;
-    int offset;
+    int offset;//only used when memory type is dma
     int reserved[4];
 }OCL_BUFFER_PLANE;
 
 
 typedef enum ocl_memory_type{
-    OCL_MEM_TYPE_CPU,
-    OCL_MEM_TYPE_GPU,
-    OCL_MEM_TYPE_DEVICE,
+    OCL_MEM_TYPE_CPU,   //host virtual memory
+    OCL_MEM_TYPE_GPU,   //physical address
+    OCL_MEM_TYPE_DEVICE,//for dma buffer fd
 }OCL_MEMORY_TYPE;
 
 typedef struct ocl_buffer{
-    OCL_MEMORY_TYPE mem_type;//cpu,dma,device
+    OCL_MEMORY_TYPE mem_type;
     int plane_num;
     OCL_BUFFER_PLANE planes[OCL_MAX_PLANE_NUM];
     int reserved[4];
@@ -157,7 +161,38 @@ typedef enum ocl_param_index{
     OCL_PARAM_INDEX_RUN_TIME,
     OCL_PARAM_INDEX_FORMAT_PLANE_INFO,
     OCL_PARAM_INDEX_ALIGN_INFO,
+    OCL_PARAM_INDEX_WARP_PARAM,
 }OCL_PARAM_INDEX;
+
+typedef enum {
+    OCL_WARP_MAP_NULL = 0,
+    OCL_WARP_MAP_PNT,
+    OCL_WARP_MAP_DPNT,
+    OCL_WARP_MAP_DDPNT,
+} OCL_WARP_MAP;
+
+typedef struct {
+    int enable;
+    int width;
+    int height;
+    OCL_BUFFER buf;
+    OCL_PIXEL_FORMAT in_fmt;
+    OCL_WARP_MAP map;
+}OCL_WARP_PARAM;
+
+typedef struct {
+    void *vaddr;
+    int paddr;
+    int size;
+    int fd;
+    void *user_data;
+} OCL_MEM_BLOCK;
+
+typedef enum {
+    OCL_ALLOCATOR_NULL = 0,
+    OCL_ALLOCATOR_CACHED_DMABUF,
+    OCL_ALLOCATOR_UNCACHED_DMABUF,
+} OCL_ALLOCATOR_TYPE;
 
 /*
  * Function to get the opencl convert library version.
@@ -193,6 +228,18 @@ OCL_RESULT OCL_QuerySupportFormat(OCL_PORT port, int * num_of_fmt, OCL_PIXEL_FOR
  * @return value in OCL_RESULT.
  */
 OCL_RESULT OCL_QuerySupportMap(int * num_of_group, OCL_PIXEL_FORMAT_GROUP ** fmt_group);
+
+/**
+ * Function to get the warp map of all supported convertible groups
+ * Before user call OCL_Open(), user can query all the groups to see if
+ * the pixel format of input and output buffer can meets their requirements.
+ * Then decice whether to use this library to do warp operation.
+ *
+ * @param num_of_group [out] number of supported pixel format groups.
+ * @param fmt_group [out] pointer to convertible group array which contain input and output formats.
+ * @return value in OCL_RESULT.
+ */
+OCL_RESULT OCL_QuerySupportWarpMap(int * num_of_group, OCL_PIXEL_FORMAT_GROUP ** fmt_group);
 
 typedef enum ocl_align_flag
 {
@@ -270,6 +317,62 @@ OCL_RESULT OCL_GetParam(OCL_HANDLE handle, OCL_PARAM_INDEX index, void * param);
  * @return value in OCL_RESULT.
  */
 OCL_RESULT OCL_Convert(OCL_HANDLE handle, OCL_BUFFER * in_buf, OCL_BUFFER * out_buf);
+
+/**
+ * Function to open the opencl allocator
+ * it will open the specified allocator, create the instance and return the handle
+ *
+ * @param handle [out] Handle of opencl allocator instance if success, NULL for failure.
+ * @param type [in] allocator memory type, vaule in OCL_ALLOCATOR_TYPE.
+ * @return value in OCL_RESULT.
+ */
+OCL_RESULT OCL_Allocator_Open (void **handle, OCL_ALLOCATOR_TYPE type);
+
+/**
+ * Function to allocate the memory according to the specified size
+ * it will create one memory block and return the address
+ *
+ * @param handle [in] Handle of the opencl allocator instance.
+ * @param size [in] memory size.
+ * @return opencl memory block address.
+ */
+OCL_MEM_BLOCK *OCL_Allocator_Alloc (void *handle, int size);
+
+/**
+ * Function to mmap the opencl memory block
+ *
+ * @param handle [in] Handle of the opencl allocator instance.
+ * @param mem_blk [in] address of the opencl memory block.
+ * @return value in OCL_RESULT.
+ */
+OCL_RESULT OCL_Allocator_Mmap (void *handle, OCL_MEM_BLOCK *mem_blk);
+
+/**
+ * Function to munmap the opencl memory block
+ *
+ * @param handle [in] Handle of the opencl allocator instance.
+ * @param mem_blk [in] address of the opencl memory block.
+ * @return value in OCL_RESULT.
+ */
+OCL_RESULT OCL_Allocator_Munmap (void *handle, OCL_MEM_BLOCK *mem_blk);
+
+/**
+ * Function to free the specified opencl memory
+ *
+ * @param handle [in] Handle of the opencl allocator instance.
+ * @param mem_blk [in] address of the opencl memory block.
+ * @return value in OCL_RESULT.
+ */
+OCL_RESULT OCL_Allocator_Free (void *handle, OCL_MEM_BLOCK *mem_blk);
+
+/**
+ * Function to close the opencl allocator
+ * it will close allocator and free the handle
+ *
+ * @param handle [in] Handle of the opencl allocator instance.
+ * @return value in OCL_RESULT.
+ */
+OCL_RESULT OCL_Allocator_Close (void *handle);
 
 #ifdef __cplusplus
 }

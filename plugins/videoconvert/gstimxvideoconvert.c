@@ -307,6 +307,7 @@ static GstFlowReturn gst_imx_video_convert_read_warp_cooordinates_file (GstImxVi
   FILE *fp;
   gint ret = 0;
   gsize size = 0;
+  gsize w_aligned, h_aligned, size_aligned;
 
   if (!imxvct || !file_name || !video_warp)
     return FALSE;
@@ -345,10 +346,15 @@ static GstFlowReturn gst_imx_video_convert_read_warp_cooordinates_file (GstImxVi
     }
     size = video_warp->coordinates_size;
 
+    w_aligned = ALIGNTO (video_warp->width, ALIGNMENT);
+    h_aligned = ALIGNTO (video_warp->height, ALIGNMENT);
+    size_aligned = w_aligned * h_aligned * video_warp->bpp / 8;
+    size_aligned = PAGE_ALIGN (size_aligned);
+
     if (mem_blk->size) {
       device->free_mem (device, mem_blk);
     }
-    mem_blk->size = size;
+    mem_blk->size = (size > size_aligned) ? size: size_aligned;
     if (device->alloc_mem (imxvct->device, mem_blk)) {
       ret = -1;
       break;
@@ -854,7 +860,7 @@ static gboolean imx_video_convert_check_format_conversion (GstBaseTransform *tra
         gst_video_format_to_string(out_fmt), NULL);
     GST_DEBUG_OBJECT (imxvct, "Check format conversion, select caps: %" GST_PTR_FORMAT, select_caps);
 
-    if (!device->check_conversion (in_caps, select_caps)) {
+    if (!device->check_conversion (device, in_caps, select_caps)) {
       GST_DEBUG_OBJECT (imxvct, "Current device can't support conversion: %d->%d", in_fmt, out_fmt);
       is_support = FALSE;
       goto done;
@@ -1776,9 +1782,9 @@ imx_video_convert_accept_caps (GstBaseTransform * transform,
         GST_DEBUG_OBJECT (transform, "can't provide caps");
       } else {
         if (direction == GST_PAD_SINK) {
-          ret = device->check_conversion (caps, rescaps);
+          ret = device->check_conversion (device, caps, rescaps);
         } else {
-          ret = device->check_conversion (rescaps, caps);
+          ret = device->check_conversion (device, rescaps, caps);
         }
         GST_DEBUG_OBJECT (transform, "query caps %" GST_PTR_FORMAT
             ", accept-caps result: %d", rescaps, ret);
@@ -2517,25 +2523,25 @@ gst_imx_video_convert_class_init (GstImxVideoConvertClass * klass)
           "Enable videocrop meta processing",
           GST_IMX_VIDEO_VIDEOCROP_META_DEFAULT,
           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  }
 
-    if (capabilities & IMX_2D_DEVICE_CAP_WARP) {
-      g_object_class_install_property (gobject_class, PROP_VIDEO_WARP_ENABLE,
-          g_param_spec_boolean("video-warp-enable", "video warp enable",
-              "Enable video warp",
-              GST_IMX_VIDEO_WARP_DEFAULT,
-              G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  if (capabilities & IMX_2D_DEVICE_CAP_WARP) {
+    g_object_class_install_property (gobject_class, PROP_VIDEO_WARP_ENABLE,
+        g_param_spec_boolean("video-warp-enable", "video warp enable",
+            "Enable video warp",
+            GST_IMX_VIDEO_WARP_DEFAULT,
+            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
-      g_object_class_install_property (gobject_class, PROP_VIDEO_WARP_COORD_FILE,
-        g_param_spec_string ("video-warp-coord-file", "video warp coord file",
-            "Video warp coordinates file location", NULL,
-            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
-            GST_PARAM_MUTABLE_READY));
+    g_object_class_install_property (gobject_class, PROP_VIDEO_WARP_COORD_FILE,
+      g_param_spec_string ("video-warp-coord-file", "video warp coord file",
+          "Video warp coordinates file location", NULL,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+          GST_PARAM_MUTABLE_READY));
 
-      g_object_class_install_property (gobject_class, PROP_VIDEO_WARP_EXTRA_CONTROLS,
-          g_param_spec_boxed ("video-warp-extra-controls", "Video warp extra controls",
-              "Extra the video warp parameters",
-              GST_TYPE_STRUCTURE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
-    }
+    g_object_class_install_property (gobject_class, PROP_VIDEO_WARP_EXTRA_CONTROLS,
+        g_param_spec_boxed ("video-warp-extra-controls", "Video warp extra controls",
+            "Extra the video warp parameters",
+            GST_TYPE_STRUCTURE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   }
 
   in_plugin->destroy(dev);

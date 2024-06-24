@@ -34,6 +34,8 @@ typedef struct {
   OCL_BUFFER dst_buf;
   OCL_MEMORY_TYPE mem_type;
   OCL_ALIGN_FLAG align_flag;
+  OCL_WARP_PARAM warp_param;
+  void * allocator;
 } Imx2DDeviceOcl;
 
 typedef struct {
@@ -54,6 +56,8 @@ static OclFmtMap ocl_fmts_map[] = {
     {GST_VIDEO_FORMAT_YV12,   OCL_FORMAT_YV12,     12},
     {GST_VIDEO_FORMAT_NV12_8L128, OCL_FORMAT_NV12_TILED, 12},
     {GST_VIDEO_FORMAT_NV12_10BE_8L128, OCL_FORMAT_NV15_TILED, 15},
+    {GST_VIDEO_FORMAT_BGR, OCL_FORMAT_BGR888, 24},
+    {GST_VIDEO_FORMAT_BGRx, OCL_FORMAT_BGRX8888, 32},
     {GST_VIDEO_FORMAT_UNKNOWN, -1, 0}
 };
 
@@ -112,6 +116,9 @@ static gint imx_ocl_close (Imx2DDevice *device)
     Imx2DDeviceOcl *ocl = (Imx2DDeviceOcl *) (device->priv);
     if (ocl) {
       OCL_Close (ocl->ocl_handle);
+      if (ocl->allocator != NULL) {
+        OCL_Allocator_Close (ocl->allocator);
+      }
       g_slice_free1(sizeof(Imx2DDeviceOcl), ocl);
     }
     device->priv = NULL;
@@ -123,14 +130,65 @@ static gint imx_ocl_close (Imx2DDevice *device)
 static gint
 imx_ocl_alloc_mem(Imx2DDevice *device, PhyMemBlock *memblk)
 {
-  GST_ERROR ("don't support allocate memory");
-  return -1;
+  Imx2DDeviceOcl *ocl;
+  OCL_MEM_BLOCK *ocl_mem;
+  OCL_RESULT ret = OCL_SUCCESS;
+
+  if (!device || !memblk)
+    return -1;
+
+  ocl = (Imx2DDeviceOcl *) (device->priv);
+  if (ocl->allocator == NULL) {
+    ret = OCL_Allocator_Open (&ocl->allocator, OCL_ALLOCATOR_UNCACHED_DMABUF);
+
+    if (ret != OCL_SUCCESS) {
+      GST_ERROR("ocl allocator: failed to open, ret: %d", ret);
+      return -1;
+    }
+  }
+
+  ocl_mem = OCL_Allocator_Alloc (ocl->allocator, memblk->size);
+  if (!ocl_mem) {
+    GST_ERROR("ocl allocator: failed to allocate memory, ret: %d", ret);
+    return -1;
+  }
+
+  ret = OCL_Allocator_Mmap (ocl->allocator, ocl_mem);
+  if (ret != OCL_SUCCESS) {
+    OCL_Allocator_Free (ocl->allocator, ocl_mem);
+    GST_ERROR("ocl allocator: failed to mmap, ret: %d", ret);
+    return -1;
+  }
+
+  memblk->vaddr = (guint8 *)ocl_mem->vaddr;
+  memblk->user_data = (gpointer) ocl_mem;
+  GST_TRACE("ocl allocator: allocate memory");
+  return 0;
 }
 
 static gint imx_ocl_free_mem(Imx2DDevice *device, PhyMemBlock *memblk)
 {
-  GST_ERROR ("don't support free memory");
-  return -1;
+  Imx2DDeviceOcl *ocl;
+  OCL_MEM_BLOCK *ocl_mem;
+  OCL_RESULT ret = OCL_SUCCESS;
+
+  if (!device || !memblk)
+    return -1;
+
+  ocl = (Imx2DDeviceOcl *) (device->priv);
+  ocl_mem = (OCL_MEM_BLOCK *) (memblk->user_data);
+  if (ocl_mem) {
+    OCL_Allocator_Munmap (ocl->allocator, ocl_mem);
+    ret = OCL_Allocator_Free (ocl->allocator, ocl_mem);
+    if (ret != OCL_SUCCESS) {
+      GST_ERROR("ocl allocator: failed to free memory, ret: %d", ret);
+      return -1;
+    }
+
+    memblk->user_data = NULL;
+    GST_TRACE("ocl allocator: free memory");
+  }
+  return 0;
 }
 
 static gint imx_ocl_copy_mem(Imx2DDevice* device, PhyMemBlock *dst_mem,
@@ -293,6 +351,7 @@ static gint imx_ocl_convert (Imx2DDevice *device, Imx2DFrame *dst, Imx2DFrame *s
 {
   gint ret = 0;
   unsigned long paddr = 0;
+  OCL_RESULT ocl_result = OCL_SUCCESS;
 
   if (!device || !device->priv || !dst || !src || !dst->mem || !src->mem)
     return -1;
@@ -449,8 +508,34 @@ static gint imx_ocl_convert (Imx2DDevice *device, Imx2DFrame *dst, Imx2DFrame *s
       ocl->src_fmt.range, ocl->src_fmt.colorspace);
   }
 
-  OCL_SetParam(ocl->ocl_handle, OCL_PARAM_INDEX_INPUT_FORMAT, &ocl->src_fmt);
-  OCL_SetParam(ocl->ocl_handle, OCL_PARAM_INDEX_OUTPUT_FORMAT, &ocl->dst_fmt);
+  if (ocl->warp_param.enable) {
+    /* The input and output frame size should not
+     * exceed the corresponding parameters in the warp file
+     */
+    if ((ocl->src_fmt.right - ocl->src_fmt.left) > ocl->warp_param.width
+        || (ocl->src_fmt.bottom - ocl->src_fmt.top) > ocl->warp_param.height) {
+      GST_ERROR("warp: paramters check error, input frame (%d,%d-%d,%d), warp parameter: width:%d,heigh:%d",
+          ocl->src_fmt.left, ocl->src_fmt.top,
+          ocl->src_fmt.right, ocl->src_fmt.bottom,
+          ocl->warp_param.width, ocl->warp_param.height);
+      return -1;
+    }
+
+    if ((ocl->dst_fmt.right - ocl->dst_fmt.left) > ocl->warp_param.width
+        || (ocl->dst_fmt.bottom - ocl->dst_fmt.top) > ocl->warp_param.height) {
+      GST_ERROR("warp: paramters check error, output frame (%d,%d-%d,%d), warp parameter: width:%d,heigh:%d",
+          ocl->dst_fmt.left, ocl->dst_fmt.top,
+          ocl->dst_fmt.right, ocl->dst_fmt.bottom,
+          ocl->warp_param.width, ocl->warp_param.height);
+      return -1;
+    }
+  }
+
+  ocl_result = OCL_SetParam(ocl->ocl_handle, OCL_PARAM_INDEX_INPUT_FORMAT, &ocl->src_fmt);
+  ocl_result |= OCL_SetParam(ocl->ocl_handle, OCL_PARAM_INDEX_OUTPUT_FORMAT, &ocl->dst_fmt);
+  if (OCL_SUCCESS != ocl_result) {
+    GST_ERROR("set parameter error, ret: %d", ocl_result);
+  }
 
   ret = OCL_Convert(ocl->ocl_handle, &ocl->src_buf, &ocl->dst_buf);
 
@@ -493,6 +578,10 @@ static gint imx_ocl_get_capabilities (Imx2DDevice* device)
 {
   gint capabilities = IMX_2D_DEVICE_CAP_CSC;
 
+  if (IS_IMX95()) {
+    capabilities |= IMX_2D_DEVICE_CAP_WARP;
+  }
+
   return capabilities;
 }
 
@@ -529,7 +618,7 @@ static GList* imx_ocl_get_supported_fmts (OCL_PORT port)
   return list;
 }
 
-static gboolean imx_ocl_check_conversion (GstCaps *input_caps, GstCaps *output_caps)
+static gboolean imx_ocl_check_conversion (Imx2DDevice *device, GstCaps *input_caps, GstCaps *output_caps)
 {
   OCL_PIXEL_FORMAT_GROUP *p_group;
   int fmt_num = 0;
@@ -540,6 +629,11 @@ static gboolean imx_ocl_check_conversion (GstCaps *input_caps, GstCaps *output_c
   const OclFmtMap *out_map;
   OCL_PIXEL_FORMAT in_pixel_format;
   OCL_PIXEL_FORMAT out_pixel_format;
+  Imx2DDeviceOcl *ocl;
+
+  if (!device || !device->priv)
+    return FALSE;
+  ocl = (Imx2DDeviceOcl *) (device->priv);
 
   /* Check whether the input and output caps have fixed format */
   in_format = imx_g2d_device_get_fixed_format(input_caps);
@@ -566,23 +660,37 @@ static gboolean imx_ocl_check_conversion (GstCaps *input_caps, GstCaps *output_c
   out_pixel_format = out_map->ocl_pixel_format;
 
   /* Check the specified conversion map */
-  if (!IS_AMPHION()) {
-    if (in_pixel_format == OCL_FORMAT_NV12_TILED
-        || in_pixel_format == OCL_FORMAT_NV15_TILED) {
-      return FALSE;
+  if (!ocl->warp_param.enable) {
+    if (!IS_AMPHION()) {
+      if (in_pixel_format == OCL_FORMAT_NV12_TILED
+          || in_pixel_format == OCL_FORMAT_NV15_TILED) {
+        return FALSE;
+      }
+    }
+
+    OCL_QuerySupportMap (&fmt_num, &p_group);
+    while (i < fmt_num) {
+      if (p_group->input_format == in_pixel_format
+          && p_group->output_format == out_pixel_format) {
+        return TRUE;
+      }
+      i++;
+      p_group++;
+    }
+  } else {
+    OCL_QuerySupportWarpMap (&fmt_num, &p_group);
+    while (p_group && i < fmt_num) {
+      if (p_group->input_format == in_pixel_format
+          && p_group->output_format == out_pixel_format) {
+        return TRUE;
+      }
+      i++;
+      p_group++;
     }
   }
 
-  OCL_QuerySupportMap (&fmt_num, &p_group);
-  while (i < fmt_num) {
-    if (p_group->input_format == in_pixel_format
-        && p_group->output_format == out_pixel_format) {
-      return TRUE;
-    }
-    i++;
-    p_group++;
-  }
-
+  GST_INFO ("unsupported conversion map, input caps %" GST_PTR_FORMAT
+      ", output_caps %" GST_PTR_FORMAT, input_caps, output_caps);
   return FALSE;
 }
 
@@ -662,6 +770,73 @@ static gint imx_ocl_fill_color (Imx2DDevice *device, Imx2DFrame *dst,
   return 0;
 }
 
+static gboolean imx_ocl_config_warp_info (Imx2DDevice *device, Imx2DVideoWarp *video_warp)
+{
+  Imx2DDeviceOcl *ocl;
+  gsize file_size;
+  OCL_MEM_BLOCK *ocl_mem;
+
+  if (!IS_IMX95()) {
+    GST_WARNING("Don't support warp/dewarp operations\n");
+    return FALSE;
+  }
+
+  if (!device || !device->priv || !video_warp)
+    return FALSE;
+
+  GST_TRACE("config warp \n");
+  /* 1. If disable video warp, return directly */
+  ocl = (Imx2DDeviceOcl *) (device->priv);
+  ocl->warp_param.enable = video_warp->enable;
+  if (!video_warp->enable) {
+    GST_TRACE("Disable warp function\n");
+    return TRUE;
+  }
+
+  /* 2. Check video warp parameters */
+  #define OCL_VIDEO_WARP_MAP_DPNT_ARB_PARAMS_NUM  2
+  #define OCL_VIDEO_WARP_MAP_DDPNT_ARB_PARAMS_NUM 6
+  if (!video_warp->coordinates_mem.size
+      || !video_warp->coordinates_mem.vaddr
+      || !video_warp->width
+      || !video_warp->height
+      || !video_warp->bpp
+      || video_warp->map_format != IMX_2D_WARP_MAP_PNT) {
+    return FALSE;
+  }
+
+  /* 3. Check coordinates file integrity */
+  file_size = video_warp->width * video_warp->height;
+  file_size *= video_warp->bpp / 8;
+  if (file_size != video_warp->coordinates_size) {
+    GST_TRACE("The file size doesn't match the actual configuration, "
+        "actual file size: %" G_GSIZE_FORMAT
+        ", config file size: %" G_GSIZE_FORMAT,
+        video_warp->coordinates_size, file_size);
+    return FALSE;
+  }
+
+  /* 4. Configure video warp parameters */
+  ocl_mem = (OCL_MEM_BLOCK*) (video_warp->coordinates_mem.user_data);
+  ocl->warp_param.map = OCL_WARP_MAP_PNT;
+  ocl->warp_param.width  = video_warp->width;
+  ocl->warp_param.height = video_warp->height;
+  ocl->warp_param.enable = TRUE;
+  ocl->warp_param.buf.mem_type = OCL_MEM_TYPE_DEVICE;
+  ocl->warp_param.buf.plane_num = 1;
+  ocl->warp_param.buf.planes[0].size = video_warp->coordinates_mem.size;
+  ocl->warp_param.buf.planes[0].paddr = 0;
+  ocl->warp_param.buf.planes[0].fd = ocl_mem->fd;
+  ocl->warp_param.buf.planes[0].offset = 0;
+
+  OCL_SetParam(ocl->ocl_handle, OCL_PARAM_INDEX_WARP_PARAM, &ocl->warp_param);
+  GST_TRACE ("video warp, width: %d, height: %d, bpp: %d, buf fd: %d, size: 0x%x",
+    video_warp->width, video_warp->height, video_warp->bpp,
+    ocl->warp_param.buf.planes[0].fd, ocl->warp_param.buf.planes[0].size);
+
+  return TRUE;
+}
+
 Imx2DDevice * imx_ocl_create (Imx2DDeviceType  device_type)
 {
   Imx2DDevice * device = g_slice_alloc(sizeof(Imx2DDevice));
@@ -694,6 +869,7 @@ Imx2DDevice * imx_ocl_create (Imx2DDeviceType  device_type)
   device->get_supported_out_fmts = imx_ocl_get_supported_out_fmts;
   device->check_conversion       = imx_ocl_check_conversion;
   device->get_alignment       = imx_ocl_get_alignment;
+  device->config_warp_info    = imx_ocl_config_warp_info;
 
   return device;
 }

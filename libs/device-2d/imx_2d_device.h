@@ -208,7 +208,7 @@ struct _Imx2DDevice {
   GList*               (*get_supported_out_fmts)  (Imx2DDevice* device);
   Imx2DRotationMode    (*get_rotate)              (Imx2DDevice* device);
   Imx2DDeinterlaceMode (*get_deinterlace)         (Imx2DDevice* device);
-  gboolean (*check_conversion) (GstCaps *input_caps, GstCaps *output_caps);
+  gboolean (*check_conversion) (Imx2DDevice *device, GstCaps *input_caps, GstCaps *output_caps);
   gboolean (*config_warp_info) (Imx2DDevice* device, Imx2DVideoWarp *video_warp);
   gboolean (*get_alignment) (Imx2DDevice* device, GstVideoInfo *in_info, GstVideoInfo *out_info, Imx2DAlignInfo *align_info);
 };

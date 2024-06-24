@@ -744,7 +744,7 @@ static gint imx_g2d_fill_color(Imx2DDevice *device, Imx2DFrame *dst,
   return ret;
 }
 
-static gboolean imx_g2d_check_conversion (GstCaps *input_caps, GstCaps *output_caps)
+static gboolean imx_g2d_check_conversion (Imx2DDevice *device, GstCaps *input_caps, GstCaps *output_caps)
 {
   GstVideoFormat in_format;
   GstVideoFormat out_format;
