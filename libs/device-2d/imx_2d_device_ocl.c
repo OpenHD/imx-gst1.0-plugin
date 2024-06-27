@@ -335,8 +335,11 @@ static gint imx_ocl_set_plane (void *handle, OCL_BUFFER *buf, OCL_FORMAT *ocl_fo
     buf->planes[i].offset = buf->planes[i-1].offset + buf->planes[i-1].size;
     buf->planes[i].size = plane_info.plane_size[i];
     buf->planes[i].paddr = (long long) (buf->planes[i-1].paddr + buf->planes[i-1].size);
-    if (frame->fd[i] >= 0)
+    if (frame->fd[i] >= 0){
       buf->planes[i].fd = frame->fd[i];
+      if (i > 0 && buf->planes[i].fd != buf->planes[i-1].fd)
+        buf->planes[i].offset = 0;
+    }
     else
       buf->planes[i].fd = frame->fd[0];
     GST_TRACE ("ocl : plane num: %d , planes[%d].size: 0x%x, planes[%d].paddr: %p, planes[%d].fd: 0x%x",
