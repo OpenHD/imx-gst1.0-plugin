@@ -95,6 +95,7 @@ static G2dFmtMap g2d_fmts_map_dpu[] = {
     {GST_VIDEO_FORMAT_UYVY,   G2D_UYVY,     16},
     {GST_VIDEO_FORMAT_YUY2,   G2D_YUYV,     16},
     {GST_VIDEO_FORMAT_NV12,   G2D_NV12,     12},
+    {GST_VIDEO_FORMAT_GRAY8,  G2D_GRAY8,    8},
 
     //this only for separate YUV format and RGB format
     {GST_VIDEO_FORMAT_UNKNOWN, -1,          1},
@@ -388,6 +389,7 @@ static gint imx_g2d_set_src_plane(struct g2d_surface *g2d_src, gchar *paddr)
     case G2D_UYVY:
     case G2D_YUYV:
     case G2D_YVYU:
+    case G2D_GRAY8:
       g2d_src->planes[0] = (gintptr)(paddr);
       break;
     default:
