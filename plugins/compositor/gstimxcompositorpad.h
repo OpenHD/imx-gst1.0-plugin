@@ -71,6 +71,8 @@ struct _GstImxCompositorPad
   gdouble alpha;
   gboolean keep_ratio;
   gboolean ignore_composite;
+
+  Imx2DVideoWarp video_warp;
 };
 
 struct _GstImxCompositorPadClass
@@ -85,6 +87,7 @@ struct _GstImxCompositorPadClass
 GType gst_imxcompositor_pad_get_type (void);
 void gst_imxcompositor_pad_get_output_size (GstVideoAggregator * comp,
                   GstImxCompositorPad * comp_pad, gint * width, gint * height);
+void gst_imxcompositor_pad_release_video_warp (GstImxCompositor *comp, GstPad * pad);
 
 G_END_DECLS
 

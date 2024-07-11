@@ -1225,6 +1225,10 @@ static gint gst_imxcompositor_config_src(GstImxCompositor *imxcomp,
   src->crop.w = pad->src_crop.w;
   src->crop.h = pad->src_crop.h;
 
+  /* we always need call config warp info because each pad may have different settings
+     and need reconfigure because they all share the same hw device to do dewarp */
+  imxcomp->device->config_warp_info (imxcomp->device, &pad->video_warp);
+
   return 0;
 }
 
@@ -1720,6 +1724,7 @@ gst_imxcompositor_release_pad (GstElement * element, GstPad * pad)
 
   GST_DEBUG_OBJECT (compositor, "release pad %s:%s", GST_DEBUG_PAD_NAME (pad));
 
+  gst_imxcompositor_pad_release_video_warp (compositor, pad);
   gst_child_proxy_child_removed (GST_CHILD_PROXY (compositor), G_OBJECT (pad),
       GST_OBJECT_NAME (pad));
 

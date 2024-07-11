@@ -573,7 +573,7 @@ static gint imx_g2d_blit(Imx2DDevice *device,
       GST_TRACE ("perform warp operation");
       g2d_enable(g2d_handle, G2D_WARPING);
       g2d_set_warp_coordinates(g2d_handle, &g2d->video_warp.coord);
-      ret = g2d_blit(g2d_handle, &g2d->src.base, &g2d->dst.base);
+      ret = g2d_blitEx(g2d_handle, &g2d->src, &g2d->dst);
 
       g2d_disable(g2d_handle, G2D_WARPING);
     }

@@ -44,6 +44,7 @@
 #define DEFAULT_IMXCOMPOSITOR_PAD_ROTATE IMX_2D_ROTATION_0
 #define DEFAULT_IMXCOMPOSITOR_PAD_ALPHA  1.0
 #define DEFAULT_IMXCOMPOSITOR_PAD_KEEP_RATIO  FALSE
+#define DEFAULT_IMXCOMPOSITOR_PAD_WARP_ENABLE FALSE
 #define SINK_TEMP_BUFFER_INIT_SIZE              (1920*1088*2)
 
 GST_DEBUG_CATEGORY_EXTERN (gst_imxcompositor_debug);
@@ -80,7 +81,10 @@ enum
   PROP_IMXCOMPOSITOR_PAD_ALPHA,
   PROP_IMXCOMPOSITOR_PAD_ROTATE,
   PROP_IMXCOMPOSITOR_PAD_DEINTERLACE,
-  PROP_IMXCOMPOSITOR_PAD_KEEP_RATIO
+  PROP_IMXCOMPOSITOR_PAD_KEEP_RATIO,
+  PROP_IMXCOMPOSITOR_PAD_WARP_ENABLE,
+  PROP_IMXCOMPOSITOR_PAD_WARP_COORD_FILE,
+  PROP_IMXCOMPOSITOR_PAD_WARP_EXTRA_CONTROLS
 };
 
 #if !GST_CHECK_VERSION(1, 16, 0)
@@ -96,6 +100,7 @@ gst_imxcompositor_pad_get_property (GObject * object, guint prop_id,
     GValue * value, GParamSpec * pspec)
 {
   GstImxCompositorPad *pad = GST_IMXCOMPOSITOR_PAD (object);
+  GstImxCompositor* comp = (GstImxCompositor*)gst_pad_get_parent(pad);
 
   switch (prop_id) {
     case PROP_IMXCOMPOSITOR_PAD_XPOS:
@@ -115,7 +120,6 @@ gst_imxcompositor_pad_get_property (GObject * object, guint prop_id,
       break;
     case PROP_IMXCOMPOSITOR_PAD_ALPHA:
     {
-      GstImxCompositor* comp = (GstImxCompositor*)gst_pad_get_parent(pad);
       if (comp->capabilities & IMX_2D_DEVICE_CAP_ALPHA) {
         g_value_set_double (value, pad->alpha);
       } else {
@@ -126,6 +130,20 @@ gst_imxcompositor_pad_get_property (GObject * object, guint prop_id,
       break;
     case PROP_IMXCOMPOSITOR_PAD_KEEP_RATIO:
       g_value_set_boolean(value, pad->keep_ratio);
+      break;
+    case PROP_IMXCOMPOSITOR_PAD_WARP_ENABLE:
+      if (comp->capabilities & IMX_2D_DEVICE_CAP_WARP) {
+        g_value_set_boolean(value, pad->video_warp.enable);
+      } else {
+        g_value_set_boolean(value, FALSE);
+        g_print("!This device don't support dewarp!\n");
+      }
+      break;
+    case PROP_IMXCOMPOSITOR_PAD_WARP_COORD_FILE:
+      g_value_set_string (value, pad->video_warp.filename);
+      break;
+    case PROP_IMXCOMPOSITOR_PAD_WARP_EXTRA_CONTROLS:
+      gst_value_set_structure (value, pad->video_warp.extra_controls);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -138,6 +156,7 @@ gst_imxcompositor_pad_set_property (GObject * object, guint prop_id,
     const GValue * value, GParamSpec * pspec)
 {
   GstImxCompositorPad *pad = GST_IMXCOMPOSITOR_PAD (object);
+  GstImxCompositor *comp = (GstImxCompositor *)gst_pad_get_parent (pad);
 
   switch (prop_id) {
     case PROP_IMXCOMPOSITOR_PAD_XPOS:
@@ -148,7 +167,6 @@ gst_imxcompositor_pad_set_property (GObject * object, guint prop_id,
       break;
     case PROP_IMXCOMPOSITOR_PAD_ALPHA:
     {
-      GstImxCompositor* comp = (GstImxCompositor*)gst_pad_get_parent(pad);
       if (comp->capabilities & IMX_2D_DEVICE_CAP_ALPHA) {
         pad->alpha = g_value_get_double (value);
       } else {
@@ -156,7 +174,6 @@ gst_imxcompositor_pad_set_property (GObject * object, guint prop_id,
         g_print("!This device don't support alpha blending, "
             "pad alpha setting will be ignored!\n");
       }
-      gst_object_unref(comp);
     }
       break;
     case PROP_IMXCOMPOSITOR_PAD_WIDTH:
@@ -179,10 +196,40 @@ gst_imxcompositor_pad_set_property (GObject * object, guint prop_id,
     case PROP_IMXCOMPOSITOR_PAD_KEEP_RATIO:
       pad->keep_ratio = g_value_get_boolean(value);
       break;
+    case PROP_IMXCOMPOSITOR_PAD_WARP_ENABLE:
+      if (comp->capabilities & IMX_2D_DEVICE_CAP_WARP) {
+        pad->video_warp.enable = g_value_get_boolean(value);
+      } else {
+        pad->video_warp.enable = FALSE;
+        g_print("!This device don't support dewarp!\n");
+      }
+      break;
+    case PROP_IMXCOMPOSITOR_PAD_WARP_COORD_FILE:
+      const gchar * location = g_value_get_string (value);
+      if (location != NULL && comp->device) {
+        if (pad->video_warp.filename)
+          g_free (pad->video_warp.filename);
+        pad->video_warp.filename = g_strdup (location);
+
+        if (!imx_2d_device_read_warp_coordinates_file (comp->device,
+            pad->video_warp.filename, &pad->video_warp)) {
+          pad->video_warp.enable = FALSE;
+        }
+      }
+      break;
+    case PROP_IMXCOMPOSITOR_PAD_WARP_EXTRA_CONTROLS:
+      const GstStructure *config = gst_value_get_structure (value);
+      if (pad->video_warp.extra_controls)
+        gst_structure_free (pad->video_warp.extra_controls);
+
+      pad->video_warp.extra_controls = config ? gst_structure_copy (config) : NULL;
+      imx_2d_device_set_warp_controls (config, &pad->video_warp);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
   }
+  gst_object_unref(comp);
 }
 
 static void
@@ -202,6 +249,24 @@ gst_imxcompositor_pad_finalize (GObject * object)
   }
 
   G_OBJECT_CLASS (gst_imxcompositor_pad_parent_class)->finalize (object);
+}
+
+void
+gst_imxcompositor_pad_release_video_warp (GstImxCompositor *comp, GstPad *bpad)
+{
+  GstImxCompositorPad *pad = (GstImxCompositorPad *)bpad;
+
+  if (pad->video_warp.filename)
+    g_free (pad->video_warp.filename);
+
+  if (pad->video_warp.extra_controls)
+    gst_structure_free (pad->video_warp.extra_controls);
+
+  if (pad->video_warp.coordinates_mem.size) {
+    GST_DEBUG_OBJECT (bpad, "release warp coordinate buffer %p",
+            pad->video_warp.coordinates_mem.paddr);
+    comp->device->free_mem (comp->device, &pad->video_warp.coordinates_mem);
+  }
 }
 
 void
@@ -990,6 +1055,20 @@ gst_imxcompositor_pad_class_init (GstImxCompositorPadClass * klass)
           "Keep the video aspect ratio after resize",
           DEFAULT_IMXCOMPOSITOR_PAD_KEEP_RATIO,
           G_PARAM_READWRITE | GST_PARAM_CONTROLLABLE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject_class, PROP_IMXCOMPOSITOR_PAD_WARP_ENABLE,
+      g_param_spec_boolean("video-warp-enable", "video warp enable",
+          "Enable video warp",
+          DEFAULT_IMXCOMPOSITOR_PAD_WARP_ENABLE,
+          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (gobject_class, PROP_IMXCOMPOSITOR_PAD_WARP_COORD_FILE,
+    g_param_spec_string ("video-warp-coord-file", "video warp coord file",
+        "Video warp coordinates file location", NULL,
+        G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS |
+        GST_PARAM_MUTABLE_READY));
+  g_object_class_install_property (gobject_class, PROP_IMXCOMPOSITOR_PAD_WARP_EXTRA_CONTROLS,
+      g_param_spec_boxed ("video-warp-extra-controls", "Video warp extra controls",
+          "Extra the video warp parameters",
+          GST_TYPE_STRUCTURE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
 #if GST_CHECK_VERSION(1, 16, 0)
   vaggcpadConvclass->create_conversion_info =
@@ -1016,6 +1095,8 @@ gst_imxcompositor_pad_init (GstImxCompositorPad * compo_pad)
   compo_pad->rotate = DEFAULT_IMXCOMPOSITOR_PAD_ROTATE;
   compo_pad->alpha = DEFAULT_IMXCOMPOSITOR_PAD_ALPHA;
   compo_pad->keep_ratio = DEFAULT_IMXCOMPOSITOR_PAD_KEEP_RATIO;
+  compo_pad->video_warp.enable = DEFAULT_IMXCOMPOSITOR_PAD_WARP_ENABLE;
+  compo_pad->video_warp.filename = NULL;
   compo_pad->sink_pool = NULL;
   compo_pad->sink_tmp_buf = NULL;
   compo_pad->sink_tmp_buf_size = 0;
