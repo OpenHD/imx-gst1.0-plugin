@@ -557,25 +557,41 @@ static gint imx_g2d_blit(Imx2DDevice *device,
     g2d_enable(g2d_handle, G2D_BLEND);
     g2d_enable(g2d_handle, G2D_GLOBAL_ALPHA);
 
+    if (g2d->video_warp.enable) {
+      if (g2d->video_warp.is_ready) {
+        GST_TRACE ("perform warp operation with alpha blend");
+        g2d_enable(g2d_handle, G2D_WARPING);
+        g2d_set_warp_coordinates(g2d_handle, &g2d->video_warp.coord);
+      } else
+        GST_WARNING ("Invalid video warp parameters");
+    }
+
     ret = g2d_blitEx(g2d_handle, &g2d->src, &g2d->dst);
+
+    if (g2d->video_warp.enable) {
+      if (g2d->video_warp.is_ready) {
+        g2d_disable(g2d_handle, G2D_WARPING);
+      }
+    }
 
     g2d_disable(g2d_handle, G2D_GLOBAL_ALPHA);
     g2d_disable(g2d_handle, G2D_BLEND);
   } else {
-    if (!g2d->video_warp.enable) {
-      ret = g2d_blitEx(g2d_handle, &g2d->src, &g2d->dst);
-    } else {
-      if (!g2d->video_warp.is_ready) {
+    if (g2d->video_warp.enable) {
+      if (g2d->video_warp.is_ready) {
+        GST_TRACE ("perform warp operation");
+        g2d_enable(g2d_handle, G2D_WARPING);
+        g2d_set_warp_coordinates(g2d_handle, &g2d->video_warp.coord);
+      } else
         GST_WARNING ("Invalid video warp parameters");
-        ret = -1;
-        goto err;
-      }
-      GST_TRACE ("perform warp operation");
-      g2d_enable(g2d_handle, G2D_WARPING);
-      g2d_set_warp_coordinates(g2d_handle, &g2d->video_warp.coord);
-      ret = g2d_blitEx(g2d_handle, &g2d->src, &g2d->dst);
+    }
 
-      g2d_disable(g2d_handle, G2D_WARPING);
+    ret = g2d_blitEx(g2d_handle, &g2d->src, &g2d->dst);
+
+    if (g2d->video_warp.enable) {
+      if (g2d->video_warp.is_ready) {
+        g2d_disable(g2d_handle, G2D_WARPING);
+      }
     }
   }
 
