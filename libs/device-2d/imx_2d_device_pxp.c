@@ -1019,6 +1019,13 @@ static GList* imx_pxp_get_supported_out_fmts(Imx2DDevice* device)
   return list;
 }
 
+static gboolean imx_pxp_config_warp_info (Imx2DDevice *device, Imx2DVideoWarp *video_warp)
+{
+
+  /* Nothing to do */
+  return TRUE;
+}
+
 Imx2DDevice * imx_pxp_create(Imx2DDeviceType  device_type)
 {
   Imx2DDevice * device = g_slice_alloc(sizeof(Imx2DDevice));
@@ -1050,6 +1057,7 @@ Imx2DDevice * imx_pxp_create(Imx2DDeviceType  device_type)
   device->get_supported_in_fmts  = imx_pxp_get_supported_in_fmts;
   device->get_supported_out_fmts = imx_pxp_get_supported_out_fmts;
   device->get_alignment       = NULL;
+  device->config_warp_info    = imx_pxp_config_warp_info;
 
   return device;
 }
