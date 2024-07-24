@@ -719,12 +719,24 @@ static gboolean imx_ocl_get_alignment (Imx2DDevice* device, GstVideoInfo *in_inf
 
   if (GST_VIDEO_INFO_WIDTH (in_info) != GST_VIDEO_INFO_WIDTH (out_info)
       || GST_VIDEO_INFO_HEIGHT (in_info) != GST_VIDEO_INFO_HEIGHT (out_info)) {
-    align_flag = OCL_ALIGN_FLAG_DOWNSCALE;
-    ocl->align_flag = align_flag;
+    if (ocl->warp_param.enable) {
+      if (align_info->is_output)
+        align_flag = OCL_ALIGN_FLAG_DOWNSCALE;
+      else
+        align_flag = OCL_ALIGN_FLAG_WARP;
+    } else {
+      if (!align_info->is_output)
+        return ret;
+      else
+        align_flag = OCL_ALIGN_FLAG_DOWNSCALE;
+    }
   } else {
-    ocl->align_flag = align_flag;
-    return ret;
+    if (!ocl->warp_param.enable)
+      return ret;
+    else
+      align_flag = OCL_ALIGN_FLAG_WARP;
   }
+  ocl->align_flag = align_flag;
 
   result = OCL_QueryAlignmentInfo (align_flag, &ocl_align);
   if (result != OCL_SUCCESS) {

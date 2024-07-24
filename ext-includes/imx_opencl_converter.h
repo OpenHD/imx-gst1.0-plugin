@@ -245,6 +245,7 @@ typedef enum ocl_align_flag
 {
     OCL_ALIGN_FLAG_DEFAULT = 0,
     OCL_ALIGN_FLAG_DOWNSCALE = 1 << 0,
+    OCL_ALIGN_FLAG_WARP = 1 << 1,
 }OCL_ALIGN_FLAG;
 /**
  * Function to query alignment infomation based on given input and output formats

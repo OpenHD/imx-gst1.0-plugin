@@ -166,6 +166,7 @@ typedef struct _Imx2DAlignInfo {
   guint width_align;
   guint height_align;
   guint size_align;
+  gboolean is_output;
 } Imx2DAlignInfo;
 
 typedef struct _Imx2DFrame {
