@@ -497,7 +497,11 @@ static gint imx_g2d_blit(Imx2DDevice *device,
     goto err;
   }
 
-  if (src->fd[1] >= 0)
+  /* In some cases, the first and second fd values are the same.
+   * Need check and update the second plane address only if the
+   * plane fd is not equal to the first palne fd.
+   */
+  if (src->fd[1] >= 0 && src->fd[1] != src->fd[0])
   {
     if (!src->mem->user_data) {
       src->mem->user_data = (gpointer *)phy_addr_from_fd (src->fd[1]);
