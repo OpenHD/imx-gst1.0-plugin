@@ -2472,8 +2472,8 @@ static void aiurdemux_parse_video (GstAiurDemux * demux, AiurDemuxStream * strea
   if (IParser->getVideoScanType)
     parser_scan_type_ret = IParser->getVideoScanType(handle, track_index, &stream->info.video.scan_type);
 
-  if ((stream->info.video.fps_n == 0) || (stream->info.video.fps_d == 0) 
-      || (stream->info.video.fps_n /stream->info.video.fps_d) > 250) {
+  if ((stream->info.video.fps_n > 0) && (stream->info.video.fps_d > 0)
+      && (stream->info.video.fps_n /stream->info.video.fps_d) > 250) {
     stream->info.video.fps_n = AIURDEMUX_FRAME_N_DEFAULT;
     stream->info.video.fps_d = AIURDEMUX_FRAME_D_DEFAULT;
   }
@@ -2506,39 +2506,39 @@ static void aiurdemux_parse_video (GstAiurDemux * demux, AiurDemuxStream * strea
   if(stream->codec_type == VIDEO_H264){
     if(stream->codec_data.length > 0 && stream->codec_data.codec_data != NULL){
       mime = g_strdup_printf
-    ("%s, stream-format=(string)avc, width=(int)%u, height=(int)%u, framerate=(fraction)%u/%u",
-    mime, stream->info.video.width, stream->info.video.height,
-    stream->info.video.fps_n, stream->info.video.fps_d);
+    ("%s, stream-format=(string)avc, width=(int)%u, height=(int)%u",
+    mime, stream->info.video.width, stream->info.video.height);
       stream->send_codec_data = TRUE;
     }else{
       mime =
     g_strdup_printf
-    ("%s, stream-format=(string)byte-stream, width=(int)%u, height=(int)%u, framerate=(fraction)%u/%u",
-    mime, stream->info.video.width, stream->info.video.height,
-    stream->info.video.fps_n, stream->info.video.fps_d);
+    ("%s, stream-format=(string)byte-stream, width=(int)%u, height=(int)%u",
+    mime, stream->info.video.width, stream->info.video.height);
       stream->send_codec_data = FALSE;
     }
   }else if (stream->codec_type == VIDEO_HEVC){
     if(stream->codec_data.length > 0 && stream->codec_data.codec_data != NULL){
       mime = g_strdup_printf
-      ("%s, stream-format=(string)hev1, width=(int)%u, height=(int)%u, framerate=(fraction)%u/%u",
-      mime, stream->info.video.width, stream->info.video.height,
-      stream->info.video.fps_n, stream->info.video.fps_d);
+      ("%s, stream-format=(string)hev1, width=(int)%u, height=(int)%u",
+      mime, stream->info.video.width, stream->info.video.height);
       stream->send_codec_data = TRUE;
     }else{
       mime =
       g_strdup_printf
-      ("%s, stream-format=(string)byte-stream, width=(int)%u, height=(int)%u, framerate=(fraction)%u/%u",
-      mime, stream->info.video.width, stream->info.video.height,
-      stream->info.video.fps_n, stream->info.video.fps_d);
+      ("%s, stream-format=(string)byte-stream, width=(int)%u, height=(int)%u",
+      mime, stream->info.video.width, stream->info.video.height);
       stream->send_codec_data = FALSE;
     }
   }else{
   mime =
     g_strdup_printf
-    ("%s, width=(int)%u, height=(int)%u, framerate=(fraction)%u/%u",
-    mime, stream->info.video.width, stream->info.video.height,
-    stream->info.video.fps_n, stream->info.video.fps_d);
+    ("%s, width=(int)%u, height=(int)%u",
+    mime, stream->info.video.width, stream->info.video.height);
+  }
+  if (stream->info.video.fps_n > 0 && stream->info.video.fps_d > 0) {
+    mime = g_strdup_printf
+    ("%s, framerate=(fraction)%u/%u",
+    mime, stream->info.video.fps_n, stream->info.video.fps_d);
   }
   if (parser_scan_type_ret == PARSER_SUCCESS) {
     mime = g_strdup_printf
