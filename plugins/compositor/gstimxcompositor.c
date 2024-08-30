@@ -701,11 +701,15 @@ static GstVideoFormat find_best_src_format(GstAggregator *vagg, GstCaps *o_caps)
       gint height = GST_VIDEO_INFO_HEIGHT (&vaggpad->info);
       if (vaggpad->info.finfo)
         i_fmt = GST_VIDEO_INFO_FORMAT(&vaggpad->info);
-      else
-        continue;
+      else {
+        GST_WARNING("No input formation, can't select the best src format");
+        goto done;
+      }
 
-      if (i_fmt == GST_VIDEO_FORMAT_UNKNOWN)
-        continue;
+      if (i_fmt == GST_VIDEO_FORMAT_UNKNOWN) {
+        GST_WARNING("Unknown input fromat, can't select the best src format");
+        goto done;
+      }
 
       gint resol = width * height;
       gint complex = 0;
@@ -731,6 +735,7 @@ static GstVideoFormat find_best_src_format(GstAggregator *vagg, GstCaps *o_caps)
       factor_min = factor;
     }
   }
+done:
   GST_OBJECT_UNLOCK (vagg);
 
   return best_fmt;
