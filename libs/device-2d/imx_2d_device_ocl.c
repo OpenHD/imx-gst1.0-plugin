@@ -425,7 +425,11 @@ static gint imx_ocl_convert (Imx2DDevice *device, Imx2DFrame *dst, Imx2DFrame *s
   /* Update input OCL buffer type */
   ocl->src_buf.mem_type = ocl->mem_type;
 
-  if (src->fd[1] >= 0) {
+  /* In some cases, the first and second fd values are the same.
+   * Need check and update the second plane address only if the
+   * plane fd is not equal to the first palne fd.
+   */
+  if (src->fd[1] >= 0 && src->fd[1] != src->fd[0]) {
     if (!src->mem->user_data) {
       src->mem->user_data = (gpointer *) phy_addr_from_fd (src->fd[1]);
     }
@@ -494,8 +498,11 @@ static gint imx_ocl_convert (Imx2DDevice *device, Imx2DFrame *dst, Imx2DFrame *s
   /* Update output OCL buffer type */
   ocl->dst_buf.mem_type = ocl->mem_type;
 
-  /* Check destination fd[1] */
-  if (dst->fd[1] >= 0) {
+  /* In some cases, the first and second fd values are the same.
+   * Need check and update the second plane address only if the
+   * plane fd is not equal to the first palne fd.
+   */
+  if (dst->fd[1] >= 0 && dst->fd[1] != dst->fd[0]) {
     if (phy_addr_from_fd (dst->fd[1]))
       ocl->dst_buf.planes[1].paddr = (long long) phy_addr_from_fd (dst->fd[1]);
   }
@@ -710,6 +717,7 @@ static gboolean imx_ocl_get_alignment (Imx2DDevice* device, GstVideoInfo *in_inf
 
   Imx2DDeviceOcl *ocl = (Imx2DDeviceOcl *) (device->priv);
   memset (align_info, 0, sizeof (Imx2DAlignInfo));
+  align_info->is_apply = TRUE;
   const OclFmtMap *in_map = imx_ocl_get_format_map(GST_VIDEO_INFO_FORMAT(in_info));
   const OclFmtMap *out_map = imx_ocl_get_format_map(GST_VIDEO_INFO_FORMAT(out_info));
   if (!in_map || ! out_map) {
@@ -725,14 +733,13 @@ static gboolean imx_ocl_get_alignment (Imx2DDevice* device, GstVideoInfo *in_inf
       else
         align_flag = OCL_ALIGN_FLAG_WARP;
     } else {
+      align_flag = OCL_ALIGN_FLAG_DOWNSCALE;
       if (!align_info->is_output)
-        return ret;
-      else
-        align_flag = OCL_ALIGN_FLAG_DOWNSCALE;
+        align_info->is_apply = FALSE;
     }
   } else {
     if (!ocl->warp_param.enable)
-      return ret;
+      align_info->is_apply = FALSE;
     else
       align_flag = OCL_ALIGN_FLAG_WARP;
   }

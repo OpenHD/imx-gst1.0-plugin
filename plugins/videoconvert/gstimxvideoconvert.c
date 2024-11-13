@@ -1082,7 +1082,8 @@ imx_video_convert_set_pool_alignment(GstImxVideoConvert *imxvct, GstCaps *caps, 
 
   align_info.is_output = is_output;
   if (device->get_alignment
-      && device->get_alignment (device, &filter->in_info, &filter->out_info, &align_info)) {
+      && device->get_alignment (device, &filter->in_info, &filter->out_info, &align_info)
+      && align_info.is_apply) {
     /* Check alignment parameters */
     if (!align_info.width_align || !align_info.height_align) {
       align_info.width_align = ALIGNMENT;
@@ -1315,6 +1316,7 @@ static gboolean imx_video_convert_decide_allocation(GstBaseTransform *transform,
   align_info.is_output = TRUE;
   if (imxvct->device->get_alignment
       && imxvct->device->get_alignment (imxvct->device, &filter->in_info, &filter->out_info, &align_info)
+      && align_info.is_apply
       && align_info.size_align) {
     size = SIZE_ALIGN(size, align_info.size_align);
   } else {
@@ -1540,6 +1542,52 @@ static void imx_video_convert_update_colorimetry (GstVideoInfo * info, Imx2DVide
   imx_info->colorimetry.matrix = imx_color_matrix;
 }
 
+static gboolean
+imx_video_convert_check_src_buffer_alignment(GstImxVideoConvert *imxvct)
+{
+  Imx2DDevice *device = imxvct->device;
+  GstVideoFilter *filter = GST_VIDEO_FILTER_CAST(imxvct);
+  gint w, h;
+  Imx2DAlignInfo align_info;
+
+  if (!device->get_alignment) {
+     GST_DEBUG_OBJECT(imxvct, "No alignment requirment");
+    return TRUE;
+  }
+
+  /* Get input alignemnt information */
+  align_info.is_output = FALSE;
+  if (device->get_alignment (device, &filter->in_info,
+      &filter->out_info, &align_info)) {
+    if (!align_info.width_align
+        || !align_info.height_align
+        || !align_info.size_align) {
+      align_info.width_align = ALIGNMENT;
+      align_info.height_align = ALIGNMENT;
+      align_info.size_align = align_info.width_align * align_info.width_align;
+      GST_INFO_OBJECT(imxvct, "Use default alignment(w,h,size): %d,%d,%d",
+          align_info.width_align,
+          align_info.height_align,
+          align_info.size_align);
+    }
+
+    w = GST_VIDEO_INFO_WIDTH (&filter->in_info);
+    h = GST_VIDEO_INFO_HEIGHT (&filter->in_info);
+    if (!ISALIGNED (w, align_info.width_align)
+        || !ISALIGNED (h, align_info.height_align)
+        || !ISALIGNED ((w*h), align_info.size_align)) {
+      GST_INFO_OBJECT(imxvct, "Does not meet alignment, buf: %dx%d,"
+          "align(w,h,size): %d,%d,%d", w, h,
+          align_info.width_align,
+          align_info.height_align,
+          align_info.size_align);
+      return FALSE;
+    }
+  }
+
+  return TRUE;
+}
+
 static GstFlowReturn imx_video_convert_transform(GstBaseTransform * trans, GstBuffer * inbuf,
     GstBuffer * outbuf)
 {
@@ -1582,7 +1630,8 @@ static GstFlowReturn imx_video_convert_transform(GstBaseTransform * trans, GstBu
 
   /* Check if need copy input frame */
   if (!(gst_buffer_is_phymem(inbuf)
-        || gst_is_dmabuf_memory (gst_buffer_peek_memory (inbuf, 0)))) {
+        || gst_is_dmabuf_memory (gst_buffer_peek_memory (inbuf, 0)))
+        || !imx_video_convert_check_src_buffer_alignment(imxvct)) {
     GST_DEBUG ("copy input frame to physical continues memory");
     caps = gst_video_info_to_caps(&in_info);
     gst_video_info_from_caps(&in_info, caps); //update the size info
