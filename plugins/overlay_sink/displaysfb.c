@@ -290,7 +290,7 @@ gint scan_displays(gpointer **phandle, gint *pcount)
         hdisplay->name, hdisplay->device, hdisplay->fmt, hdisplay->w, hdisplay->h, 
         hdisplay->s, hdisplay->color_key, hdisplay->alpha);
 
-    phandle[count] = hdisplay;
+    phandle[count] = (void *) hdisplay;
     count ++;
     if (count >= MAX_DISPLAY)
       break;
