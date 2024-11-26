@@ -127,6 +127,7 @@ typedef struct {
   REuint32 aging;
   REuint32 verbose;
   REboolean use_default_filename;
+  REuint32 fragment_duration;
 }REOptions;
 
 static pthread_t media_time_thread = 0;
@@ -350,6 +351,13 @@ static int set_recoder_setting (RecorderEngine *recorder, REOptions * pOpt)
     return -1;
   }
 
+  /* Configure the fragment duration if needed */
+  if (RE_RESULT_SUCCESS != recorder->set_fragment_duration (
+        (RecorderEngineHandle)recorder, pOpt->fragment_duration)) {
+    LOG_ERROR ("set fragment duration fail.\n");
+    return -1;
+  }
+
   if (pOpt->host[0])
     recorder->set_rtp_host ((RecorderEngineHandle)recorder, pOpt->host, pOpt->port);
 
@@ -432,6 +440,7 @@ static int set_recoder_setting_video (RecorderEngine *recorder, REOptions * pOpt
     switch (pOpt->container_format) {
       case RE_OUTPUT_FORMAT_DEFAULT:
       case RE_OUTPUT_FORMAT_MOV:
+      case RE_OUTPUT_FORMAT_FMP4:
         strcpy(pOpt->path, "./grecorder_output.mp4");
         break;
       case RE_OUTPUT_FORMAT_MKV:
@@ -620,13 +629,14 @@ static int recorder_parse_options(int argc, char* argv[], REOptions * pOpt)
       {"audio encoder bitrate(kbps)"},
       {"video encoder type: 0->default(H264), 1->H264, 2->MPEG4, 3->H263, 4->MPEG, 5->VP8, 6->HEVC"},
       {"video encoder bitrate(kbps)"},
-      {"media container format: 0->default(MP4), 1->MP4, 2->MKV, 3->AVI, 4->FLV, 5->TS"},
+      {"media container format: 0->default(MP4), 1->MP4, 2->MKV, 3->AVI, 4->FLV, 5->TS, 6->fmp4"},
       {"output path"},
       {"RTP streaming host IP address"},
       {"RTP streaming port"},
       {"recording file count(0 means unlimited)"},
       {"max duration for recorded file(second)"},
       {"max file size for recorded file(Byte)"},
+      {"fragment duration of fmp4 file: Fragment durations in ms, the default duration is 1 second"},
       {"display application log"},
       {0, 0, 0, 0}
     };
@@ -665,11 +675,12 @@ static int recorder_parse_options(int argc, char* argv[], REOptions * pOpt)
       {"file_count",    required_argument, 0, 'n'},
       {"duration",    required_argument, 0, 'd'},
       {"file_size",    required_argument, 0, 'z'},
+      {"fragment_duration",    required_argument, 0, 'y'},
       {"verbose", no_argument,       &verbose, 1},
       {0, 0, 0, 0}
     };
 
-    c = getopt_long (argc, argv, "a:s:w:e:u:f:k:t:q:i:v:n:z:o:r:x:g:d:",
+    c = getopt_long (argc, argv, "a:s:w:e:u:f:k:t:q:i:v:n:z:o:r:x:g:d:y:",
         long_options, &option_index);
 
     /* Detect the end of the options. */
@@ -718,6 +729,10 @@ static int recorder_parse_options(int argc, char* argv[], REOptions * pOpt)
       case 't':
         if (optarg)
           pOpt->container_format = atoi (optarg);
+        break;
+      case 'y':
+        if (optarg)
+          pOpt->fragment_duration = atoi (optarg);
         break;
       case 'q':
         if (optarg)

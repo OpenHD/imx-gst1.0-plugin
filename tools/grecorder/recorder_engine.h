@@ -104,7 +104,8 @@ typedef REuint32    REresult;
 #define RE_OUTPUT_FORMAT_AVI                ((REuint32) 0x00000003)
 #define RE_OUTPUT_FORMAT_FLV                ((REuint32) 0x00000004)
 #define RE_OUTPUT_FORMAT_TS                 ((REuint32) 0x00000005)
-#define RE_OUTPUT_FORMAT_LIST_END           ((REuint32) 0x00000006)
+#define RE_OUTPUT_FORMAT_FMP4               ((REuint32) 0x00000006)
+#define RE_OUTPUT_FORMAT_LIST_END           ((REuint32) 0x00000007)
 
 #define RE_AUDIO_SOURCE_DEFAULT             ((REuint32) 0x00000000)
 #define RE_AUDIO_SOURCE_MIC                 ((REuint32) 0x00000001)
@@ -219,6 +220,7 @@ typedef struct RecorderEngine_
 
   /* Recorded output interface */
   REresult (*set_container_format)(RecorderEngineHandle handle, REuint32 of);
+  REresult (*set_fragment_duration)(RecorderEngineHandle handle, REmillisecond timeMs);
   REresult (*set_output_file_path)(RecorderEngineHandle handle, const REchar *path);
   REresult (*set_rtp_host)(RecorderEngineHandle handle, const REchar *host, REuint32 port);
   /* fileCount is 0 means unlimited */

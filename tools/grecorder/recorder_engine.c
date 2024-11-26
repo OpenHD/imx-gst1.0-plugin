@@ -227,6 +227,7 @@ typedef struct _gRecorderEngine
   gint max_files;
   gint64 max_file_size;
   gint64 max_file_duration;
+  guint fragment_duration;
 
   gchar *preview_caps_name;
 
@@ -280,6 +281,7 @@ create_encording_profile (gRecorderEngine *recorder)
   switch (recorder->container_format) {
     case RE_OUTPUT_FORMAT_DEFAULT:
     case RE_OUTPUT_FORMAT_MOV:
+    case RE_OUTPUT_FORMAT_FMP4:
       caps = gst_caps_new_simple ("video/quicktime", "variant", G_TYPE_STRING, 
             "apple", NULL);
       container = gst_encoding_container_profile_new ("mov", NULL, caps, NULL);
@@ -825,6 +827,26 @@ set_camerabin_caps_from_string (gRecorderEngine *recorder)
   }
 }
 
+static void set_muxer_property (gRecorderEngine *recorder)
+{
+  if (recorder->container_format == RE_OUTPUT_FORMAT_FMP4) {
+    GstElement *mux = gst_bin_get_by_name (GST_BIN (recorder->camerabin), "muxer");
+
+    if (mux && !g_strcmp0 (GST_OBJECT_NAME (gst_element_get_factory (mux)), "qtmux")) {
+      guint fragment_duration = recorder->fragment_duration;
+
+      /* The default duration is 1 second */
+      if (fragment_duration == 0) {
+        fragment_duration = 1000;
+      }
+      g_object_set (mux, "fragment-duration", fragment_duration, NULL);
+      gst_object_unref (mux);
+    } else {
+       g_warning ("qtmux was not found, can't set fragment duration\n");
+    }
+  }
+}
+
 static REresult
 setup_pipeline (gRecorderEngine *recorder)
 {
@@ -1010,6 +1032,18 @@ setup_pipeline (gRecorderEngine *recorder)
       setup_pipeline_element_bin (recorder->camerabin, "video-sink", 
           video_sink_str, NULL);
     g_free (video_sink_str);
+  } else {
+    if (recorder->container_format == RE_OUTPUT_FORMAT_FMP4
+        || recorder->container_format == RE_OUTPUT_FORMAT_MKV) {
+      res &=
+        setup_pipeline_element (recorder->camerabin, "video-sink", "filesink",
+            NULL);
+      g_object_get (recorder->camerabin, "video-sink", &recorder->video_sink, NULL);
+      /* Enabling synchronous IO to prevent data from not being
+       * written to the disk in time due to power failure
+       */
+      g_object_set (recorder->video_sink, "o-sync", TRUE, NULL);
+    }
   }
 
   if (recorder->imagepp_name) {
@@ -1103,6 +1137,7 @@ setup_pipeline (gRecorderEngine *recorder)
     goto error;
   }
   GST_INFO_OBJECT (recorder->camerabin, "camera ready");
+  set_muxer_property (recorder);
 
   if (GST_STATE_CHANGE_FAILURE ==
       gst_element_set_state (recorder->camerabin, GST_STATE_PLAYING)) {
@@ -1246,14 +1281,18 @@ run_pipeline (gRecorderEngine *recorder)
 
   if (recorder->mode == MODE_VIDEO) {
     if (recorder->video_sink) {
-      const gchar *filename_suffix;
-      gchar *filename_str;
-      filename_suffix = strrchr((char *) recorder->filename, '.');
-      filename_str =
-        g_strdup_printf ("%s%s%s", (char *) recorder->filename, "%05d", filename_suffix);
-      GST_DEBUG ("Setting filename: %s", filename_str);
-      g_object_set (recorder->video_sink, "location", filename_str, NULL);
-      g_free (filename_str);     
+      if(!g_strcmp0 (GST_OBJECT_NAME (gst_element_get_factory (recorder->video_sink)), "filesink")) {
+        g_object_set (recorder->video_sink, "location", recorder->filename, NULL);
+      } else {
+        const gchar *filename_suffix;
+        gchar *filename_str;
+        filename_suffix = strrchr((char *) recorder->filename, '.');
+        filename_str =
+          g_strdup_printf ("%s%s%s", (char *) recorder->filename, "%05d", filename_suffix);
+        GST_DEBUG ("Setting filename: %s", filename_str);
+        g_object_set (recorder->video_sink, "location", filename_str, NULL);
+        g_free (filename_str);
+      }
     } else if (recorder->host) {
       GST_DEBUG ("web camera host: %s", (char *) recorder->host);
     } else
@@ -1878,6 +1917,15 @@ static REresult set_container_format (RecorderEngineHandle handle, REuint32 of)
   return RE_RESULT_SUCCESS;
 }
 
+static REresult set_fragment_duration(RecorderEngineHandle handle, REmillisecond timeMs)
+{
+  RecorderEngine *h = (RecorderEngine *)(handle);
+  gRecorderEngine *recorder = (gRecorderEngine *)(h->pData);
+
+  recorder->fragment_duration = timeMs;
+  return RE_RESULT_SUCCESS;
+}
+
 static REresult set_output_file_path (RecorderEngineHandle handle, const REchar *path)
 {
   RecorderEngine *h = (RecorderEngine *)(handle);
@@ -2390,6 +2438,7 @@ RecorderEngine * recorder_engine_create()
   h->set_audio_encoder_settings = set_audio_encoder_settings;
   h->set_video_encoder_settings = set_video_encoder_settings;
   h->set_container_format = set_container_format;
+  h->set_fragment_duration = set_fragment_duration;
   h->set_output_file_path = set_output_file_path;
   h->set_rtp_host = set_rtp_host;
   h->set_file_count = set_file_count;
