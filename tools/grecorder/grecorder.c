@@ -636,7 +636,7 @@ static int recorder_parse_options(int argc, char* argv[], REOptions * pOpt)
       {"recording file count(0 means unlimited)"},
       {"max duration for recorded file(second)"},
       {"max file size for recorded file(Byte)"},
-      {"fragment duration of fmp4 file: Fragment durations in ms, the default duration is 1 second"},
+      {"fragment duration in millisecond: the default value is 1000ms for fmp4 and 500 ms for mkv"},
       {"display application log"},
       {0, 0, 0, 0}
     };

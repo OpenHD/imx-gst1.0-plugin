@@ -844,6 +844,21 @@ static void set_muxer_property (gRecorderEngine *recorder)
     } else {
        g_warning ("qtmux was not found, can't set fragment duration\n");
     }
+  } else if (recorder->container_format == RE_OUTPUT_FORMAT_MKV) {
+    GstElement *mux = gst_bin_get_by_name (GST_BIN (recorder->camerabin), "muxer");
+
+    if (mux && !g_strcmp0 (GST_OBJECT_NAME (gst_element_get_factory (mux)), "matroskamux")) {
+      gint64 min_cluster_duration = (gint64)recorder->fragment_duration * GST_MSECOND;
+
+      /* The default duration is 500 ms */
+      if (min_cluster_duration == 0) {
+        min_cluster_duration = 500 * GST_MSECOND;
+      }
+      g_object_set (mux, "min-cluster-duration", min_cluster_duration, NULL);
+      gst_object_unref (mux);
+    } else {
+       g_warning ("matroskamux was not found, can't set cluster duration\n");
+    }
   }
 }
 
