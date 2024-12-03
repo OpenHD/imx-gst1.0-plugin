@@ -551,8 +551,11 @@ static gint imx_ocl_convert (Imx2DDevice *device, Imx2DFrame *dst, Imx2DFrame *s
 
   if (ocl->align_flag == OCL_ALIGN_FLAG_DOWNSCALE
       && ocl->dst_fmt.format == OCL_FORMAT_RGB888) {
-    gst_buffer_resize (dst->outbuf, 0, dst->crop.w * dst->crop.h * 3);
-    GST_TRACE("resize buffer: w:%d, h:%d",dst->crop.w, dst->crop.h);
+    /* Resize buffer only if width and height have no padding */
+    if (dst->info.w == dst->crop.w && dst->info.h == dst->crop.h) {
+      gst_buffer_resize (dst->outbuf, 0, dst->crop.w * dst->crop.h * 3);
+      GST_TRACE("resize buffer: w:%d, h:%d, crop:%dx%d",dst->info.w, dst->info.h, dst->crop.w, dst->crop.h);
+    }
   }
 
 err:
@@ -716,7 +719,6 @@ static gboolean imx_ocl_get_alignment (Imx2DDevice* device, GstVideoInfo *in_inf
     return FALSE;
 
   Imx2DDeviceOcl *ocl = (Imx2DDeviceOcl *) (device->priv);
-  memset (align_info, 0, sizeof (Imx2DAlignInfo));
   align_info->is_apply = TRUE;
   const OclFmtMap *in_map = imx_ocl_get_format_map(GST_VIDEO_INFO_FORMAT(in_info));
   const OclFmtMap *out_map = imx_ocl_get_format_map(GST_VIDEO_INFO_FORMAT(out_info));
@@ -743,7 +745,9 @@ static gboolean imx_ocl_get_alignment (Imx2DDevice* device, GstVideoInfo *in_inf
     else
       align_flag = OCL_ALIGN_FLAG_WARP;
   }
-  ocl->align_flag = align_flag;
+
+  if (align_info->is_output)
+    ocl->align_flag = align_flag;
 
   result = OCL_QueryAlignmentInfo (align_flag, &ocl_align);
   if (result != OCL_SUCCESS) {
