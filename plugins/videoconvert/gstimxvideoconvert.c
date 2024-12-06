@@ -1543,12 +1543,13 @@ static void imx_video_convert_update_colorimetry (GstVideoInfo * info, Imx2DVide
 }
 
 static gboolean
-imx_video_convert_check_src_buffer_alignment(GstImxVideoConvert *imxvct, GstBuffer *inbuf)
+imx_video_convert_check_src_buffer_alignment(GstImxVideoConvert *imxvct, GstBuffer *inbuf, GstVideoMeta *video_meta)
 {
   Imx2DDevice *device = imxvct->device;
   GstVideoFilter *filter = GST_VIDEO_FILTER_CAST(imxvct);
   gint w, h;
   Imx2DAlignInfo align_info;
+  gsize size;
 
   /* Check whether alignment does not needs to be handled
    * or the input buffer is acquired from its own buffer pool
@@ -1566,22 +1567,25 @@ imx_video_convert_check_src_buffer_alignment(GstImxVideoConvert *imxvct, GstBuff
     if (!align_info.width_align
         || !align_info.height_align
         || !align_info.size_align) {
-      align_info.width_align = ALIGNMENT;
-      align_info.height_align = ALIGNMENT;
-      align_info.size_align = align_info.width_align * align_info.width_align;
-      GST_INFO_OBJECT(imxvct, "Use default alignment(w,h,size): %d,%d,%d",
+      GST_DEBUG_OBJECT(imxvct, "No need check because of invalid align (w,h,size): %d,%d,%d",
           align_info.width_align,
           align_info.height_align,
           align_info.size_align);
+      return TRUE;
     }
 
     w = GST_VIDEO_INFO_WIDTH (&filter->in_info);
     h = GST_VIDEO_INFO_HEIGHT (&filter->in_info);
+    size = GST_VIDEO_INFO_SIZE (&filter->in_info);
+    if (video_meta) {
+      w += video_meta->alignment.padding_left + video_meta->alignment.padding_right;
+      h += video_meta->alignment.padding_top + video_meta->alignment.padding_bottom;
+    }
     if (!ISALIGNED (w, align_info.width_align)
         || !ISALIGNED (h, align_info.height_align)
-        || !ISALIGNED ((w*h), align_info.size_align)) {
-      GST_INFO_OBJECT(imxvct, "Does not meet alignment, buf: %dx%d,"
-          "align(w,h,size): %d,%d,%d", w, h,
+        || !ISALIGNED (size, align_info.size_align)) {
+      GST_DEBUG_OBJECT(imxvct, "buffer does not meet alignment, buf: %dx%d, size: %" G_GSIZE_FORMAT
+          ", align(w,h,size): %d,%d,%d", w, h, size,
           align_info.width_align,
           align_info.height_align,
           align_info.size_align);
@@ -1589,6 +1593,7 @@ imx_video_convert_check_src_buffer_alignment(GstImxVideoConvert *imxvct, GstBuff
     }
   }
 
+  GST_DEBUG_OBJECT(imxvct, "buffer meet alignment");
   return TRUE;
 }
 
@@ -1635,7 +1640,7 @@ static GstFlowReturn imx_video_convert_transform(GstBaseTransform * trans, GstBu
   /* Check if need copy input frame */
   if (!(gst_buffer_is_phymem(inbuf)
         || gst_is_dmabuf_memory (gst_buffer_peek_memory (inbuf, 0)))
-        || !imx_video_convert_check_src_buffer_alignment(imxvct, inbuf)) {
+        || !imx_video_convert_check_src_buffer_alignment(imxvct, inbuf, video_meta)) {
     GST_DEBUG ("copy input frame to physical continues memory");
     caps = gst_video_info_to_caps(&in_info);
     gst_video_info_from_caps(&in_info, caps); //update the size info
