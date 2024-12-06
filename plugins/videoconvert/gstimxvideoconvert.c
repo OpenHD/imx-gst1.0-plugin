@@ -1543,15 +1543,19 @@ static void imx_video_convert_update_colorimetry (GstVideoInfo * info, Imx2DVide
 }
 
 static gboolean
-imx_video_convert_check_src_buffer_alignment(GstImxVideoConvert *imxvct)
+imx_video_convert_check_src_buffer_alignment(GstImxVideoConvert *imxvct, GstBuffer *inbuf)
 {
   Imx2DDevice *device = imxvct->device;
   GstVideoFilter *filter = GST_VIDEO_FILTER_CAST(imxvct);
   gint w, h;
   Imx2DAlignInfo align_info;
 
-  if (!device->get_alignment) {
-     GST_DEBUG_OBJECT(imxvct, "No alignment requirment");
+  /* Check whether alignment does not needs to be handled
+   * or the input buffer is acquired from its own buffer pool
+   */
+  if (!device->get_alignment
+      || (imxvct->in_pool && imxvct->in_pool == inbuf->pool)) {
+    GST_DEBUG_OBJECT(imxvct, "No need check buffer alignment");
     return TRUE;
   }
 
@@ -1631,7 +1635,7 @@ static GstFlowReturn imx_video_convert_transform(GstBaseTransform * trans, GstBu
   /* Check if need copy input frame */
   if (!(gst_buffer_is_phymem(inbuf)
         || gst_is_dmabuf_memory (gst_buffer_peek_memory (inbuf, 0)))
-        || !imx_video_convert_check_src_buffer_alignment(imxvct)) {
+        || !imx_video_convert_check_src_buffer_alignment(imxvct, inbuf)) {
     GST_DEBUG ("copy input frame to physical continues memory");
     caps = gst_video_info_to_caps(&in_info);
     gst_video_info_from_caps(&in_info, caps); //update the size info
