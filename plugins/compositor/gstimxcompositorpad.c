@@ -636,33 +636,14 @@ gst_imxcompositor_pad_prepare_frame (GstVideoAggregatorPad * pad, GstVideoAggreg
     gst_video_info_from_caps(&info, caps); //update the size info
     gst_caps_unref(caps);
 
-    if (!imxcomp->allocator) {
-#ifdef USE_DMABUFHEAPS
-      imxcomp->allocator = gst_dmabufheaps_allocator_obtain ();
-#endif
-#ifdef USE_ION
-      if (!imxcomp->allocator) {
-        imxcomp->allocator = gst_ion_allocator_obtain ();
-      }
-#endif
-    }
-
-    if (!imxcomp->allocator)
-      imxcomp->allocator =
-          gst_imx_2d_device_allocator_new((gpointer)(imxcomp->device));
-
-    if (!cpad->sink_tmp_buf) {
-      cpad->sink_tmp_buf = gst_buffer_new_allocate(imxcomp->allocator,
-          SINK_TEMP_BUFFER_INIT_SIZE, NULL);
-      cpad->sink_tmp_buf_size = SINK_TEMP_BUFFER_INIT_SIZE;
-    }
-
-    if (cpad->sink_tmp_buf && info.size > SINK_TEMP_BUFFER_INIT_SIZE) {
-      if (cpad->sink_tmp_buf)
-        gst_buffer_unref(cpad->sink_tmp_buf);
-      cpad->sink_tmp_buf = gst_buffer_new_allocate(imxcomp->allocator,
-          info.size, NULL);
-      cpad->sink_tmp_buf_size = info.size;
+    if (cpad->sink_pool && !cpad->sink_tmp_buf) {
+      gst_buffer_pool_set_active(cpad->sink_pool, TRUE);
+      GstFlowReturn ret = gst_buffer_pool_acquire_buffer(cpad->sink_pool,
+                                                  &(cpad->sink_tmp_buf), NULL);
+      if (ret != GST_FLOW_OK)
+        GST_ERROR_OBJECT (pad, "error acquiring input buffer: %s", gst_flow_get_name(ret));
+      else
+        GST_LOG_OBJECT (pad, "created input buffer (%p)", cpad->sink_tmp_buf);
     }
 
     if (cpad->sink_tmp_buf) {

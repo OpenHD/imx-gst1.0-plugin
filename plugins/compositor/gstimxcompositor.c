@@ -390,19 +390,18 @@ gst_imxcompositor_sink_query (GstAggregator * agg, GstAggregatorPad * bpad,
         }
       }
 
-      if (need_pool) {
-        if (!gst_video_info_from_caps (&info, caps))
-          return FALSE;
+      // always create sink_pool no matter whether upstream needs it
+      if (!gst_video_info_from_caps (&info, caps))
+        return FALSE;
 
-        size = GST_VIDEO_INFO_SIZE (&info);
-        pool = gst_imxcompositor_create_bufferpool(imxcomp, caps, size,
-            IMX_COMPOSITOR_INPUT_POOL_MIN_BUFFERS,
-            IMX_COMPOSITOR_INPUT_POOL_MAX_BUFFERS);
-        if (pool) {
-          GST_IMX_COMPOSITOR_UNREF_POOL(imxcompo_pad->sink_pool);
-          imxcompo_pad->sink_pool = pool;
-          imxcompo_pad->sink_pool_update = TRUE;
-        }
+      size = GST_VIDEO_INFO_SIZE (&info);
+      pool = gst_imxcompositor_create_bufferpool(imxcomp, caps, size,
+          IMX_COMPOSITOR_INPUT_POOL_MIN_BUFFERS,
+          IMX_COMPOSITOR_INPUT_POOL_MAX_BUFFERS);
+      if (pool) {
+        GST_IMX_COMPOSITOR_UNREF_POOL(imxcompo_pad->sink_pool);
+        imxcompo_pad->sink_pool = pool;
+        imxcompo_pad->sink_pool_update = TRUE;
       }
 
       if (pool) {
