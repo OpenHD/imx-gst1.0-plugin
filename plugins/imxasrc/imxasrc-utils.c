@@ -58,7 +58,7 @@ int ring_buffer_avail(RingBuffer *ringbuffer)
   return count;
 }
 
-int ring_buffer_get(RingBuffer *ringbuffer, int num_block_out, void *data)
+int ring_buffer_get(RingBuffer *ringbuffer, int num_block_out, uint8_t *data)
 {
   int ret = 0;
   int block_out1, block_out2;
@@ -88,7 +88,7 @@ int ring_buffer_get(RingBuffer *ringbuffer, int num_block_out, void *data)
   return ret;
 }
 
-int ring_buffer_put(RingBuffer *ringbuffer, int num_block_in, void *data)
+int ring_buffer_put(RingBuffer *ringbuffer, int num_block_in, uint8_t *data)
 {
   int ret = 0;
   int block_in1, block_in2;
@@ -118,59 +118,44 @@ int ring_buffer_put(RingBuffer *ringbuffer, int num_block_in, void *data)
   return ret;
 }
 
-snd_pcm_format_t get_alsa_pcm_format (GstAudioFormat fmt)
+typedef struct {
+  GstAudioFormat gst_fmt;
+  snd_pcm_format_t pcm_fmt;
+} FormatMap;
+
+static FormatMap format_map[] = {
+    {GST_AUDIO_FORMAT_S16LE,     SND_PCM_FORMAT_S16_LE},
+    {GST_AUDIO_FORMAT_U16LE,     SND_PCM_FORMAT_U16_LE},
+    {GST_AUDIO_FORMAT_S20LE,     SND_PCM_FORMAT_S20_3LE},
+    {GST_AUDIO_FORMAT_U20LE,     SND_PCM_FORMAT_U20_3LE},
+    {GST_AUDIO_FORMAT_S24LE,     SND_PCM_FORMAT_S24_3LE},
+    {GST_AUDIO_FORMAT_U24LE,     SND_PCM_FORMAT_U24_3LE},
+    {GST_AUDIO_FORMAT_S24_32LE,  SND_PCM_FORMAT_S24_LE},
+    {GST_AUDIO_FORMAT_U24_32LE,  SND_PCM_FORMAT_U24_LE},
+    {GST_AUDIO_FORMAT_S32LE,     SND_PCM_FORMAT_S32_LE},
+    {GST_AUDIO_FORMAT_U32LE,     SND_PCM_FORMAT_U32_LE},
+    {GST_AUDIO_FORMAT_F32LE,     SND_PCM_FORMAT_FLOAT_LE},
+    {GST_AUDIO_FORMAT_UNKNOWN,   SND_PCM_FORMAT_UNKNOWN}
+};
+
+snd_pcm_format_t gst_to_alsa_pcm_format(GstAudioFormat fmt)
 {
-  switch (fmt) {
-    case GST_AUDIO_FORMAT_S8:
-      return SND_PCM_FORMAT_S8;
-    case GST_AUDIO_FORMAT_U8:
-      return SND_PCM_FORMAT_U8;
-      /* 16 bit */
-    case GST_AUDIO_FORMAT_S16LE:
-      return SND_PCM_FORMAT_S16_LE;
-    case GST_AUDIO_FORMAT_S16BE:
-      return SND_PCM_FORMAT_S16_BE;
-    case GST_AUDIO_FORMAT_U16LE:
-      return SND_PCM_FORMAT_U16_LE;
-    case GST_AUDIO_FORMAT_U16BE:
-      return SND_PCM_FORMAT_U16_BE;
-      /* 24 bit in low 3 bytes of 32 bits */
-    case GST_AUDIO_FORMAT_S24_32LE:
-      return SND_PCM_FORMAT_S24_LE;
-    case GST_AUDIO_FORMAT_S24_32BE:
-      return SND_PCM_FORMAT_S24_BE;
-    case GST_AUDIO_FORMAT_U24_32LE:
-      return SND_PCM_FORMAT_U24_LE;
-    case GST_AUDIO_FORMAT_U24_32BE:
-      return SND_PCM_FORMAT_U24_BE;
-      /* 24 bit in 3 bytes */
-    case GST_AUDIO_FORMAT_S24LE:
-      return SND_PCM_FORMAT_S24_3LE;
-    case GST_AUDIO_FORMAT_S24BE:
-      return SND_PCM_FORMAT_S24_3BE;
-    case GST_AUDIO_FORMAT_U24LE:
-      return SND_PCM_FORMAT_U24_3LE;
-    case GST_AUDIO_FORMAT_U24BE:
-      return SND_PCM_FORMAT_U24_3BE;
-      /* 32 bit */
-    case GST_AUDIO_FORMAT_S32LE:
-      return SND_PCM_FORMAT_S32_LE;
-    case GST_AUDIO_FORMAT_S32BE:
-      return SND_PCM_FORMAT_S32_BE;
-    case GST_AUDIO_FORMAT_U32LE:
-      return SND_PCM_FORMAT_U32_LE;
-    case GST_AUDIO_FORMAT_U32BE:
-      return SND_PCM_FORMAT_U32_BE;
-    case GST_AUDIO_FORMAT_F32LE:
-      return SND_PCM_FORMAT_FLOAT_LE;
-    case GST_AUDIO_FORMAT_F32BE:
-      return SND_PCM_FORMAT_FLOAT_BE;
-    case GST_AUDIO_FORMAT_F64LE:
-      return SND_PCM_FORMAT_FLOAT64_LE;
-    case GST_AUDIO_FORMAT_F64BE:
-      return SND_PCM_FORMAT_FLOAT64_BE;
-    default:
-      break;
+  int i;
+  for (i = 0; i < sizeof(format_map) / sizeof(FormatMap); i++) {
+    if (format_map[i].gst_fmt == fmt)
+      return format_map[i].pcm_fmt;
   }
+
   return SND_PCM_FORMAT_UNKNOWN;
+}
+
+GstAudioFormat alsa_pcm_to_gst_format(snd_pcm_format_t fmt)
+{
+  int i;
+  for (i = 0; i < sizeof(format_map) / sizeof(FormatMap); i++) {
+    if (format_map[i].pcm_fmt == fmt)
+      return format_map[i].gst_fmt;
+  }
+
+  return GST_AUDIO_FORMAT_UNKNOWN;
 }

@@ -125,8 +125,10 @@ gst_imxasrc_converter_update_config (GstImxASRCConverter * convert,
   convert->in.rate = in_rate;
   convert->out.rate = out_rate;
 
-  if (convert->resampler)
-    gst_imxasrc_resampler_update (convert->resampler, in_rate, out_rate, config);
+  if (convert->resampler) {
+    if (!gst_imxasrc_resampler_update (convert->resampler, in_rate, out_rate, config))
+      return FALSE;
+  }
 
   if (config) {
     gst_structure_foreach (config, copy_config, convert);
@@ -152,7 +154,7 @@ gst_imxasrc_converter_update_config (GstImxASRCConverter * convert,
  * Returns: (nullable): a #GstImxASRCConverter or %NULL if conversion is not possible.
  */
 GstImxASRCConverter *
-gst_imxasrc_converter_new (GstAudioConverterFlags flags, GstAudioInfo * in_info,
+gst_imxasrc_converter_new (GstImxASRCMethod method, GstAudioInfo * in_info,
     GstAudioInfo * out_info, GstStructure * config)
 {
   GstImxASRCConverter *convert;
@@ -166,9 +168,10 @@ gst_imxasrc_converter_new (GstAudioConverterFlags flags, GstAudioInfo * in_info,
   convert->out = *out_info;
   convert->channels = in_info->channels;
   convert->format = in_info->finfo->format;
+  convert->method = method;
 
   convert->resampler =
-    gst_imxasrc_resampler_new (0, flags, convert->format, convert->channels, in_info->rate,
+    gst_imxasrc_resampler_new (method, 0, convert->format, convert->channels, in_info->rate,
                                out_info->rate, convert->config);
   if (!convert->resampler) {
     GST_ERROR ("converter create resampler failed");
@@ -213,6 +216,17 @@ gst_imxasrc_converter_samples (GstImxASRCConverter * convert,
 
   if (convert->resampler)
     gst_imxasrc_resampler_resample (convert->resampler, in, in_frames, out, out_frames);
+
+  return TRUE;
+}
+
+gboolean
+gst_imxasrc_converter_set_quality (GstImxASRCConverter * convert, IMXASRCResamplerQuality quality)
+{
+  if (convert->resampler)
+    convert->resampler->quality = convert->quality;
+  else
+    return FALSE;
 
   return TRUE;
 }

@@ -1,5 +1,5 @@
 /* GStreamer
- * Copyright 2024 NXP
+ * Copyright 2024-2025 NXP
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -17,37 +17,21 @@
  * Boston, MA 02110-1335, USA.
  */
 
-#ifndef _IMXASRC_LIB_H
-#define _IMXASRC_LIB_H
+#ifndef __IMXASRC_LIB_HW_H__
+#define __IMXASRC_LIB_HW_H__
 
 #include <sound/compress_offload.h>
 #include "imxasrc-utils.h"
 
-typedef struct _ASRCConfig ASRCConfig;
-typedef struct _ASRCAudioInfo ASRCAudioInfo;
+typedef struct _ASRCHWConfig ASRCHWConfig;
 
-struct _ASRCAudioInfo {
-  int channels;
-  int input_sample_rate;
-  int output_sample_rate;
-  snd_pcm_format_t input_format;
-  snd_pcm_format_t output_format;
-};
-
-struct _ASRCConfig {
+struct _ASRCHWConfig {
   int fd;
 
   ASRCAudioInfo audio_info;
-  int in_bps;
-  int out_bps;
 
-  int inclk;
-  int outclk;
   int input_dma_size;
   int output_dma_size;
-  int pair_index;
-  int supported_in_format;
-  int supported_out_format;
 
   void *bufin_start;
   void *bufout_start;
@@ -57,13 +41,16 @@ struct _ASRCConfig {
   RingBuffer ring_buffer;
 };
 
-int imx_asrc_open(ASRCConfig *asrc);
-void imx_asrc_close(ASRCConfig *asrc);
-int imx_asrc_start(ASRCConfig *asrc);
-int imx_asrc_config(ASRCConfig *asrc);
-int imx_asrc_resample(ASRCConfig *asrc_config, gpointer in[],
-                      size_t in_bytes, gpointer out[], size_t out_bytes);
-size_t imx_asrc_get_out_len(ASRCConfig *asrc_config, size_t in_frames);
-size_t imx_asrc_get_out_frames(ASRCConfig *asrc_config, size_t in_frames);
+int imx_asrc_hw_open (ASRCHWConfig *asrc_hw);
+void imx_asrc_hw_close (ASRCHWConfig *asrc_hw);
+int imx_asrc_hw_config (ASRCHWConfig *asrc_hw);
+int imx_asrc_hw_resample (ASRCHWConfig *asrc_hw, gpointer in[],
+                         size_t in_bytes, gpointer out[], size_t out_bytes);
+size_t imx_asrc_hw_get_out_frames (ASRCHWConfig *asrc_hw, size_t in_frames);
+GList *imx_asrc_hw_get_supported_fmts (void);
+GList *imx_asrc_hw_get_supported_rates (void);
+gint imx_asrc_hw_get_min_channels (void);
+gint imx_asrc_hw_get_max_channels (void);
+gboolean imx_asrc_hw_is_exist (void);
 
 #endif

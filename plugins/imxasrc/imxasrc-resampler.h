@@ -1,5 +1,5 @@
 /* GStreamer
- * Copyright 2024 NXP
+ * Copyright 2024-2025 NXP
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -22,13 +22,15 @@
 
 #include <gst/gst.h>
 #include <gst/audio/audio.h>
-#include "imxasrc-lib.h"
+#include "imxasrc-lib-hw.h"
+#include "imxasrc-lib-sw.h"
+#include "imxasrc-device.h"
 
 G_BEGIN_DECLS
 
 typedef struct _GstImxASRCResampler GstImxASRCResampler;
 
-typedef int (*ResampleFunc) (ASRCConfig * asrc, gpointer in[],
+typedef int (*ResampleFunc) (GstImxASRCResampler * resampler, gpointer in[],
     gsize in_frames, gpointer out[], gsize out_frames);
 
 struct _GstImxASRCResampler
@@ -61,7 +63,11 @@ struct _GstImxASRCResampler
   gsize samples_len;
   gsize samples_avail;
   gpointer *sbuf;
-  ASRCConfig *asrc_config;
+
+  GstImxASRCMethod method;
+  IMXASRCResamplerQuality quality;
+  ASRCHWConfig *asrc_hw;
+  ASRCSWConfig *asrc_sw;
 };
 
 GST_AUDIO_API
@@ -84,7 +90,7 @@ gboolean gst_imxasrc_resampler_update (GstImxASRCResampler * resampler,
                                        GstStructure * options);
 
 GST_AUDIO_API
-GstImxASRCResampler *gst_imxasrc_resampler_new (GstAudioResamplerMethod method,
+GstImxASRCResampler *gst_imxasrc_resampler_new (GstImxASRCMethod method,
                                                 GstAudioResamplerFlags flags,
                                                 GstAudioFormat format, gint channels,
                                                 gint in_rate, gint out_rate,

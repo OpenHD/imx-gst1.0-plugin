@@ -21,15 +21,15 @@
 #include <stdio.h>
 #include <math.h>
 #include "imxasrc-resampler.h"
-#include "imxasrc-lib.h"
 
 GST_DEBUG_CATEGORY_STATIC (imxasrc_resampler_debug);
 #define GST_CAT_DEFAULT imxasrc_resampler_debug
 
-static void
-gst_imxasrc_resampler_asrc_init (ASRCConfig *asrc)
+static gint
+gst_imxasrc_resampler_init (GstImxASRCResampler * resampler)
 {
   static gsize init_gonce = 0;
+  gint ret;
 
   if (g_once_init_enter (&init_gonce)) {
 
@@ -39,51 +39,79 @@ gst_imxasrc_resampler_asrc_init (ASRCConfig *asrc)
     g_once_init_leave (&init_gonce, 1);
   }
 
-  imx_asrc_open(asrc);
-}
-
-static gint
-gst_imxasrc_resampler_asrc_configure (ASRCConfig *asrc, ASRCAudioInfo info)
-{
-  gint ret;
-  asrc->audio_info = info;
-
-  /* initialize ASRCConfig */
-  ret = imx_asrc_config(asrc);
-  if (ret) {
-    GST_ERROR ("gst_imxasrc_resampler_asrc_configure failed");
-    return -1;
+  if (resampler->method == GST_IMXASRC_METHOD_HW) {
+    resampler->asrc_hw = g_slice_new0 (ASRCHWConfig);
+    ret = imx_asrc_hw_open (resampler->asrc_hw);
+    if (ret) {
+      GST_ERROR ("imx_asrc_hw_open failed");
+      g_slice_free (ASRCHWConfig, resampler->asrc_hw);
+      return ret;
+    }
+  } else if (resampler->method == GST_IMXASRC_METHOD_SSRC ||
+             resampler->method == GST_IMXASRC_METHOD_DSPC) {
+    resampler->asrc_sw = g_slice_new0 (ASRCSWConfig);
+    resampler->asrc_sw->lib_type = LIB_SSRC;
+    if (resampler->method == GST_IMXASRC_METHOD_DSPC)
+      resampler->asrc_sw->lib_type = LIB_DSPC;
+    ret = imx_asrc_sw_open (resampler->asrc_sw);
+    if (ret) {
+      GST_ERROR ("imx_asrc_sw_open failed");
+      g_slice_free (ASRCHWConfig, resampler->asrc_hw);
+      return ret;
+    }
   }
 
   return ret;
 }
 
 static gint
-gst_imxasrc_resampler_asrc_start (ASRCConfig *asrc)
-{
-  gint ret;
-
-  ret = imx_asrc_start(asrc);
-  if (ret) {
-    GST_ERROR ("gst_imxasrc_resampler_asrc_start failed");
-    return -1;
-  }
-
-  return ret;
-}
-
-static gint
-gst_imxasrc_resampler_asrc_resample (ASRCConfig * asrc, gpointer in[],
+gst_imxasrc_resampler_process (GstImxASRCResampler *resampler, gpointer in[],
     gsize in_frames, gpointer out[], gsize out_frames)
 {
   gint ret;
 
-  ret = imx_asrc_resample (asrc, in, in_frames, out, out_frames);
-  if (ret) {
-    GST_ERROR ("gst_imxasrc_resampler_asrc_resample failed");
-    return -1;
+  if (resampler->method == GST_IMXASRC_METHOD_HW) {
+    ret = imx_asrc_hw_resample (resampler->asrc_hw, in, in_frames, out, out_frames);
+    if (ret) {
+      GST_ERROR ("imx_asrc_hw_resample failed");
+      return ret;
+    }
+  } else if (resampler->method == GST_IMXASRC_METHOD_SSRC ||
+             resampler->method == GST_IMXASRC_METHOD_DSPC) {
+    ret = imx_asrc_sw_resample (resampler->asrc_sw, in, in_frames, out, out_frames);
+    if (ret) {
+      GST_ERROR ("imx_asrc_sw_resample failed");
+      return ret;
+    }
   }
 
+  return ret;
+}
+
+static gint
+gst_imxasrc_resampler_configure (GstImxASRCResampler *resampler, ASRCAudioInfo info)
+{
+  gint ret;
+
+  if (resampler->method == GST_IMXASRC_METHOD_HW) {
+    resampler->asrc_hw->audio_info = info;
+    ret = imx_asrc_hw_config (resampler->asrc_hw);
+    if (ret) {
+      GST_ERROR ("imx_asrc_hw_config failed");
+      return ret;
+    }
+  } else if (resampler->method == GST_IMXASRC_METHOD_SSRC ||
+             resampler->method == GST_IMXASRC_METHOD_DSPC) {
+    resampler->asrc_sw->audio_info = info;
+    resampler->asrc_sw->quality = resampler->quality;
+    ret = imx_asrc_sw_config (resampler->asrc_sw);
+    if (ret) {
+      GST_ERROR ("imx_asrc_sw_config failed");
+      return ret;
+    }
+  }
+
+  resampler->resample = gst_imxasrc_resampler_process;
   return ret;
 }
 
@@ -105,12 +133,16 @@ gst_imxasrc_resampler_get_out_frames (GstImxASRCResampler *resampler,
 {
   gsize out;
 
-  GST_DEBUG("gst_imx_asrc_resampler_get_out_frames");
+  GST_DEBUG("gst_imxasrc_resampler_get_out_frames");
   g_return_val_if_fail (resampler != NULL, 0);
 
-  if (in_frames)
-    out = imx_asrc_get_out_frames(resampler->asrc_config, in_frames);
-  else
+  if (in_frames) {
+    if (resampler->method == GST_IMXASRC_METHOD_HW)
+      out = imx_asrc_hw_get_out_frames (resampler->asrc_hw, in_frames);
+    else if (resampler->method == GST_IMXASRC_METHOD_SSRC ||
+             resampler->method == GST_IMXASRC_METHOD_DSPC)
+      out = imx_asrc_sw_get_out_frames (resampler->asrc_sw, in_frames);
+  } else
     return 0;
 
   return out;
@@ -196,30 +228,21 @@ gst_imxasrc_resampler_update (GstImxASRCResampler * resampler,
   resampler->samp_inc = in_rate / out_rate;
   resampler->samp_frac = in_rate % out_rate;
 
-  resampler->resample = gst_imxasrc_resampler_asrc_resample;
-
   GST_DEBUG ("in_rate %d, out_rate %d, %d, %d", in_rate, out_rate, resampler->in_rate, resampler->out_rate);
 
-  /* Update ASRCConfig settings */
   ASRCAudioInfo audio_info;
   audio_info.channels = resampler->channels;
   audio_info.input_sample_rate = in_rate;
   audio_info.output_sample_rate = out_rate;
 
-  audio_info.input_format = get_alsa_pcm_format(resampler->in_format);
-  audio_info.output_format = get_alsa_pcm_format(resampler->out_format);
+  audio_info.in_bps = resampler->in_bps;
+  audio_info.out_bps = resampler->out_bps;
+  audio_info.input_format = gst_to_alsa_pcm_format (resampler->in_format);
+  audio_info.output_format = gst_to_alsa_pcm_format (resampler->out_format);
 
-  resampler->asrc_config->in_bps = resampler->in_bps;
-  resampler->asrc_config->out_bps = resampler->out_bps;
-
-  ret = gst_imxasrc_resampler_asrc_configure (resampler->asrc_config, audio_info);
+  ret = gst_imxasrc_resampler_configure (resampler, audio_info);
   if (ret < 0) {
-    GST_ERROR ("gst_imxasrc_resampler_asrc_configure failed");
-    return FALSE;
-  }
-  ret = gst_imxasrc_resampler_asrc_start (resampler->asrc_config);
-  if (ret < 0) {
-    GST_ERROR ("gst_imxasrc_resampler_asrc_start failed");
+    GST_ERROR ("gst_imxasrc_resampler_configure failed");
     return FALSE;
   }
 
@@ -227,8 +250,8 @@ gst_imxasrc_resampler_update (GstImxASRCResampler * resampler,
 }
 
 /**
- * gst_audio_resampler_new:
- * @method: a #GstAudioResamplerMethod
+ * gst_imxasrc_resampler_new:
+ * @method: a #GstImxASRCMethod
  * @flags: #GstAudioResamplerFlags
  * @format: the #GstAudioFormat
  * @channels: the number of channels
@@ -241,7 +264,7 @@ gst_imxasrc_resampler_update (GstImxASRCResampler * resampler,
  * Returns: (skip) (transfer full): The new #GstAudioResampler.
  */
 GstImxASRCResampler *
-gst_imxasrc_resampler_new (GstAudioResamplerMethod method,
+gst_imxasrc_resampler_new (GstImxASRCMethod method,
     GstAudioResamplerFlags flags,
     GstAudioFormat format, gint channels,
     gint in_rate, gint out_rate, GstStructure * options)
@@ -270,21 +293,24 @@ gst_imxasrc_resampler_new (GstAudioResamplerMethod method,
   resampler->in_bps = GST_AUDIO_FORMAT_INFO_WIDTH (info) / 8;
   resampler->out_bps = resampler->in_bps;
   resampler->sbuf = g_malloc0 (sizeof (gpointer) * channels);
+  resampler->method = method;
 
-  resampler->asrc_config = g_slice_new0 (ASRCConfig);
-
-  gst_imxasrc_resampler_asrc_init (resampler->asrc_config);
+  if (gst_imxasrc_resampler_init (resampler)) {
+    GST_ERROR ("gst_imxasrc_resampler_init failed");
+    goto fail;
+  }
 
   if (!gst_imxasrc_resampler_update (resampler, in_rate, out_rate, NULL)) {
     GST_ERROR ("gst_imxasrc_resampler_update failed");
-    g_slice_free (ASRCConfig, resampler->asrc_config);
-    g_slice_free (GstImxASRCResampler, resampler);
-    return NULL;
+    goto fail;
   }
 
   gst_imxasrc_resampler_reset (resampler);
-
   return resampler;
+
+fail:
+    g_slice_free (GstImxASRCResampler, resampler);
+    return NULL;
 }
 
 /**
@@ -298,12 +324,18 @@ gst_imxasrc_resampler_free (GstImxASRCResampler * resampler)
 {
   g_return_if_fail (resampler != NULL);
 
-  imx_asrc_close(resampler->asrc_config);
+  if (resampler->method == GST_IMXASRC_METHOD_HW) {
+    imx_asrc_hw_close (resampler->asrc_hw);
+    g_slice_free (ASRCHWConfig, resampler->asrc_hw);
+  } else if (resampler->method == GST_IMXASRC_METHOD_SSRC||
+             resampler->method == GST_IMXASRC_METHOD_DSPC) {
+    imx_asrc_sw_close (resampler->asrc_sw);
+    g_slice_free (ASRCSWConfig, resampler->asrc_sw);
+  }
   g_free (resampler->samples);
   g_free (resampler->sbuf);
   if (resampler->options)
     gst_structure_free (resampler->options);
-  g_slice_free (ASRCConfig, resampler->asrc_config);
   g_slice_free (GstImxASRCResampler, resampler);
 }
 
@@ -336,7 +368,7 @@ gst_imxasrc_resampler_resample (GstImxASRCResampler * resampler,
     gpointer in[], gsize in_frames, gpointer out[], gsize out_frames)
 {
 
-  resampler->resample (resampler->asrc_config, in, in_frames, out, out_frames);
+  resampler->resample (resampler, in, in_frames, out, out_frames);
 
   return;
 }

@@ -22,14 +22,11 @@
 
 #include <gst/base/gstbasetransform.h>
 #include "imxasrc-converter.h"
+#include "imxasrc-device.h"
 
 G_BEGIN_DECLS
 
-#define GST_TYPE_IMXASRC   (gst_imxasrc_get_type())
-#define GST_IMXASRC(obj)   (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_IMXASRC,GstImxASRC))
-#define GST_IMXASRC_CLASS(klass)   (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_IMXASRC,GstImxASRCClass))
-#define GST_IS_IMXASRC(obj)   (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_IMXASRC))
-#define GST_IS_IMXASRC_CLASS(obj)   (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_IMXASRC))
+#define GST_IMXASRC(obj)   ((GstImxASRC *)(obj))
 
 typedef struct _GstImxASRC GstImxASRC;
 typedef struct _GstImxASRCClass GstImxASRCClass;
@@ -55,17 +52,16 @@ struct _GstImxASRC
   GstAudioInfo out;
 
     /* Converter */
-  gboolean is_hw_resample;
-  GstAudioConverter *sw_converter;
-  GstImxASRCConverter *hw_converter;
+  GstImxASRCMethod  method;
+  IMXASRCResamplerQuality quality;
+  GstImxASRCConverter *converter;
 };
 
 struct _GstImxASRCClass
 {
   GstBaseTransformClass base_imxasrc_class;
+  GstImxASRCMethod method;
 };
-
-GType gst_imxasrc_get_type (void);
 
 G_END_DECLS
 

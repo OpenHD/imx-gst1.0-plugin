@@ -1,5 +1,5 @@
 /* GStreamer
- * Copyright 2024 NXP
+ * Copyright 2024-2025 NXP
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -36,6 +36,8 @@ struct _GstImxASRCConverter
 
   gint channels;
   GstAudioFormat format;
+  GstImxASRCMethod method;
+  IMXASRCResamplerQuality quality;
   GstImxASRCResampler *resampler;
 };
 
@@ -52,14 +54,14 @@ void gst_imxasrc_converter_reset (GstImxASRCConverter * convert);
 
 GST_AUDIO_API
 gboolean gst_imxasrc_converter_update_config (GstImxASRCConverter * convert,
-                                            gint in_rate,
-                                            gint out_rate,
-                                            GstStructure * config);
+                                              gint in_rate,
+                                              gint out_rate,
+                                              GstStructure * config);
 
 GST_AUDIO_API
-GstImxASRCConverter * gst_imxasrc_converter_new (GstAudioConverterFlags flags,
+GstImxASRCConverter * gst_imxasrc_converter_new (GstImxASRCMethod method,
                                                  GstAudioInfo * in_info,
-                                                GstAudioInfo * out_info, GstStructure * config);
+                                                 GstAudioInfo * out_info, GstStructure * config);
 
 GST_AUDIO_API
 void gst_imxasrc_converter_free (GstImxASRCConverter * convert);
@@ -69,6 +71,9 @@ gboolean gst_imxasrc_converter_samples (GstImxASRCConverter * convert,
                                         GstAudioConverterFlags flags,
                                         gpointer in[], gsize in_frames,
                                         gpointer out[], gsize out_frames);
+
+GST_AUDIO_API
+gboolean gst_imxasrc_converter_set_quality (GstImxASRCConverter * convert, IMXASRCResamplerQuality quality);
 
 G_END_DECLS
 

@@ -1,5 +1,5 @@
 /* GStreamer
- * Copyright 2024 NXP
+ * Copyright 2024-2025 NXP
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -38,10 +38,12 @@
 #include <gst/audio/audio.h>
 #include <gst/base/gstbasetransform.h>
 #include "gstimxasrc.h"
-#include "gstimxcommon.h"
 
 GST_DEBUG_CATEGORY_STATIC (gst_imxasrc_debug_category);
 #define GST_CAT_DEFAULT gst_imxasrc_debug_category
+
+#define DEFAULT_IMXASRC_RESAMPLE_QUALITY GST_IMXASRC_RESAMPLER_QUALITY_0
+#define GST_IMX_ASRC_PARAMS_QDATA g_quark_from_static_string("imxasrc-params")
 
 /* prototypes */
 
@@ -73,68 +75,140 @@ static GstFlowReturn gst_imxasrc_transform (GstBaseTransform * trans,
 
 enum
 {
-  PROP_0
+  PROP_0,
+  PROP_QUALITY,
 };
 
-/* pad templates */
-#define GST_IMXASRC_FORMATS_SRC "{ " \
-    "S16LE, U16LE, S24_32LE, S24LE, " \
-    "U24_32LE, U24LE, S32LE, U32LE, " \
-    "S20LE, U20LE, F32LE }"
+static GstElementClass *gst_imxasrc_parent_class = NULL;
 
-#define GST_IMXASRC_FORMATS_SINK "{ " \
-    "S16LE, U16LE, S24_32LE, S24LE, " \
-    "U24_32LE, U24LE, S32LE, U32LE, " \
-    "S20LE, U20LE, F32LE }"
+GType
+gstimxasrc_get_resample_quality (GstImxASRCMethod method) {
+  static GType gst_imxasrc_resample_quality = 0;
 
-#define SUPPORTED_CAPS_SRC \
-  GST_AUDIO_CAPS_MAKE (GST_IMXASRC_FORMATS_SRC) \
-  ", layout = (string) { interleaved, non-interleaved }"
+  if (!gst_imxasrc_resample_quality) {
+    if (method == GST_IMXASRC_METHOD_SSRC) {
+      static GEnumValue ssrc_resample_quality[] = {
+        {GST_IMXASRC_RESAMPLER_QUALITY_0, "ssrc quality low", "low"},
+        {GST_IMXASRC_RESAMPLER_QUALITY_1, "ssrc quality medium", "medium"},
+        {GST_IMXASRC_RESAMPLER_QUALITY_2, "ssrc quality high", "high"},
+        {0, NULL, NULL},
+      };
 
-#define SUPPORTED_CAPS_SINK \
-  GST_AUDIO_CAPS_MAKE (GST_IMXASRC_FORMATS_SINK) \
-  ", layout = (string) { interleaved, non-interleaved }"
+      gst_imxasrc_resample_quality =
+        g_enum_register_static ("GstImxASRCResampleQuality", ssrc_resample_quality);
+    } else if (method == GST_IMXASRC_METHOD_DSPC) {
+      static GEnumValue dspc_resample_quality[] = {
+        {GST_IMXASRC_RESAMPLER_QUALITY_0, "dspc quality low", "low"},
+        {GST_IMXASRC_RESAMPLER_QUALITY_1, "dspc quality high", "high"},
+        {0, NULL, NULL},
+      };
 
-static GstStaticPadTemplate gst_imxasrc_src_template =
-GST_STATIC_PAD_TEMPLATE ("src",
-    GST_PAD_SRC,
-    GST_PAD_ALWAYS,
-    GST_STATIC_CAPS (SUPPORTED_CAPS_SRC)
-    );
+      gst_imxasrc_resample_quality =
+        g_enum_register_static ("GstImxASRCResampleQuality", dspc_resample_quality);
+    }
+  }
 
-static GstStaticPadTemplate gst_imxasrc_sink_template =
-GST_STATIC_PAD_TEMPLATE ("sink",
-    GST_PAD_SINK,
-    GST_PAD_ALWAYS,
-    GST_STATIC_CAPS (SUPPORTED_CAPS_SINK)
-    );
+  return gst_imxasrc_resample_quality;
+}
 
+static GstCaps*
+gst_imx_asrc_caps_from_device (ImxASRCDeviceInfo *in_plugin)
+{
+  GstCaps *caps = NULL;
+  GValue values = { 0, };
+  GValue value = { 0, };
+  GList *list = NULL;
+  gint channels_min, channels_max, i;
 
-/* class initialization */
+  caps = gst_caps_new_empty_simple ("audio/x-raw");
 
-G_DEFINE_TYPE_WITH_CODE (GstImxASRC, gst_imxasrc, GST_TYPE_BASE_TRANSFORM,
-  GST_DEBUG_CATEGORY_INIT (gst_imxasrc_debug_category, "imxasrc", 0,
-  "debug category for imxasrc element"));
+  g_value_init (&values, GST_TYPE_LIST);
+  g_value_init (&value, G_TYPE_STRING);
+
+  list = in_plugin->get_supported_fmts ();
+  for (i = 0; i < g_list_length (list); i++) {
+    GstAudioFormat audio_format = (GstAudioFormat)g_list_nth_data(list, i);
+    g_value_set_static_string (&value, (const gchar *)gst_audio_format_to_string(audio_format));
+    gst_value_list_prepend_value (&values, &value);
+  }
+
+  gst_caps_set_value (caps, "format", &values);
+
+  g_value_unset (&value);
+  g_value_unset (&values);
+
+  g_value_init (&values, GST_TYPE_LIST);
+  g_value_init (&value, G_TYPE_INT);
+
+  list = in_plugin->get_supported_rates ();
+  for (i = 0; i < g_list_length (list); i++) {
+    g_value_set_int (&value, GPOINTER_TO_INT(g_list_nth_data(list, i)));
+    gst_value_list_prepend_value (&values, &value);
+  }
+
+  gst_caps_set_value (caps, "rate", &values);
+
+  g_value_unset (&value);
+  g_value_unset (&values);
+
+  g_list_free(list);
+
+  channels_min = in_plugin->get_min_channels ();
+  channels_max = in_plugin->get_max_channels ();
+  if (channels_min == channels_max)
+    gst_caps_set_simple (caps, "channels", G_TYPE_INT, channels_min, NULL);
+  else
+    gst_caps_set_simple (caps, "channels", GST_TYPE_INT_RANGE, channels_min,
+        channels_max, NULL);
+
+  gst_caps_set_simple(caps, "layout", G_TYPE_STRING, "interleaved", NULL);
+
+  return caps;
+}
 
 static void
 gst_imxasrc_class_init (GstImxASRCClass * klass)
 {
   GObjectClass *gobject_class = G_OBJECT_CLASS (klass);
   GstBaseTransformClass *base_transform_class = GST_BASE_TRANSFORM_CLASS (klass);
+  GstCaps *caps;
 
-  /* Setting up pads and setting metadata should be moved to
-     base_class_init if you intend to subclass this class. */
-  gst_element_class_add_static_pad_template (GST_ELEMENT_CLASS(klass),
-      &gst_imxasrc_src_template);
-  gst_element_class_add_static_pad_template (GST_ELEMENT_CLASS(klass),
-      &gst_imxasrc_sink_template);
+  ImxASRCDeviceInfo *in_plugin = (ImxASRCDeviceInfo *)
+      g_type_get_qdata (G_OBJECT_CLASS_TYPE (klass), GST_IMX_ASRC_PARAMS_QDATA);
+
+  gchar longname[64] = {0};
+  snprintf(longname, 64, "i.MX ASRC with %s", in_plugin->name);
 
   gst_element_class_set_static_metadata (GST_ELEMENT_CLASS(klass),
-      "i.MX ASRC", "Filter/Converter/Audio", "Resamples audio",
+      longname, "Filter/Converter/Audio", "Resamples audio",
       "Chancel Liu <chancel.liu@nxp.com>");
 
+  caps = gst_imx_asrc_caps_from_device(in_plugin);
+  if (!caps) {
+    GST_ERROR ("Couldn't create caps for device '%s'", in_plugin->name);
+    caps = gst_caps_new_empty_simple ("audio/x-raw");
+  }
+
+  gst_element_class_add_pad_template (GST_ELEMENT_CLASS(klass),
+    gst_pad_template_new ("sink", GST_PAD_SINK, GST_PAD_ALWAYS, caps));
+
+  gst_element_class_add_pad_template (GST_ELEMENT_CLASS(klass),
+    gst_pad_template_new ("src", GST_PAD_SRC, GST_PAD_ALWAYS, caps));
+
+  gst_imxasrc_parent_class = g_type_class_peek_parent (klass);
+  klass->method = in_plugin->method;
   gobject_class->set_property = gst_imxasrc_set_property;
   gobject_class->get_property = gst_imxasrc_get_property;
+
+  if (in_plugin->method == GST_IMXASRC_METHOD_SSRC ||
+      in_plugin->method == GST_IMXASRC_METHOD_DSPC) {
+    g_object_class_install_property (gobject_class, PROP_QUALITY,
+        g_param_spec_enum ("quality", "Resample quality",
+            "What quality for resample to use",
+            gstimxasrc_get_resample_quality (in_plugin->method),
+            DEFAULT_IMXASRC_RESAMPLE_QUALITY, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  }
+
   gobject_class->dispose = gst_imxasrc_dispose;
   gobject_class->finalize = gst_imxasrc_finalize;
   base_transform_class->transform_caps = GST_DEBUG_FUNCPTR (gst_imxasrc_transform_caps);
@@ -147,13 +221,13 @@ gst_imxasrc_class_init (GstImxASRCClass * klass)
   base_transform_class->src_event = GST_DEBUG_FUNCPTR (gst_imxasrc_src_event);
   base_transform_class->transform = GST_DEBUG_FUNCPTR (gst_imxasrc_transform);
   base_transform_class->passthrough_on_same_caps = TRUE;
-
 }
 
 static void
 gst_imxasrc_init (GstImxASRC *imxasrc)
 {
-
+  GstImxASRCClass *klass = (GstImxASRCClass *)G_OBJECT_GET_CLASS (imxasrc);
+  imxasrc->method = klass->method;
 }
 
 void
@@ -165,6 +239,10 @@ gst_imxasrc_set_property (GObject * object, guint property_id,
   GST_DEBUG_OBJECT (imxasrc, "set_property");
 
   switch (property_id) {
+    case PROP_QUALITY:
+      imxasrc->quality = g_value_get_enum (value);
+      GST_DEBUG_OBJECT (imxasrc, "imxasrc quality %d", imxasrc->quality);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -180,6 +258,9 @@ gst_imxasrc_get_property (GObject * object, guint property_id,
   GST_DEBUG_OBJECT (imxasrc, "get_property");
 
   switch (property_id) {
+    case PROP_QUALITY:
+      g_value_set_enum (value, imxasrc->quality);
+      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
       break;
@@ -293,10 +374,8 @@ gst_imxasrc_fixate_caps (GstBaseTransform * trans, GstPadDirection direction,
 static void
 gst_imxasrc_reset_state (GstImxASRC * imxasrc)
 {
-  if (imxasrc->is_hw_resample && imxasrc->hw_converter)
-    gst_imxasrc_converter_reset (imxasrc->hw_converter);
-  else if (imxasrc->sw_converter)
-    gst_audio_converter_reset (imxasrc->sw_converter);
+  if (imxasrc->converter)
+    gst_imxasrc_converter_reset (imxasrc->converter);
 }
 
 static gboolean
@@ -305,42 +384,29 @@ gst_imxasrc_update_state (GstImxASRC * imxasrc, GstAudioInfo * in,
 {
   GstStructure *options = NULL;
 
-  if ((imxasrc->hw_converter == NULL || imxasrc->sw_converter == NULL) && in == NULL && out == NULL)
+  if (imxasrc->converter == NULL && in == NULL && out == NULL)
     return TRUE;
 
   if (in != NULL && (in->finfo != imxasrc->in.finfo ||
           in->channels != imxasrc->in.channels ||
-          in->layout != imxasrc->in.layout)) {
-    if (imxasrc->is_hw_resample && imxasrc->hw_converter) {
-      gst_imxasrc_converter_free (imxasrc->hw_converter);
-      imxasrc->hw_converter = NULL;
-    }
-    else if (imxasrc->sw_converter) {
-      gst_audio_converter_free (imxasrc->sw_converter);
-      imxasrc->sw_converter = NULL;
-    }
+          in->layout != imxasrc->in.layout) && imxasrc->converter) {
+    gst_imxasrc_converter_free (imxasrc->converter);
+    imxasrc->converter = NULL;
   }
-  if (imxasrc->is_hw_resample && imxasrc->hw_converter == NULL) {
-    imxasrc->hw_converter = gst_imxasrc_converter_new (0,
-                                                       in, out, options);
-    if (imxasrc->hw_converter == NULL)
+  if (imxasrc->converter == NULL) {
+    imxasrc->converter = gst_imxasrc_converter_new (imxasrc->method,
+                                                    in, out, options);
+    if (imxasrc->converter == NULL)
       goto resampler_failed;
-  }
-  else if (imxasrc->sw_converter == NULL) {
-    imxasrc->sw_converter = gst_audio_converter_new (GST_AUDIO_CONVERTER_FLAG_VARIABLE_RATE,
-                                                     in, out, options);
-    if (imxasrc->sw_converter == NULL)
-      goto resampler_failed;
+
+    if (imxasrc->method == GST_IMXASRC_METHOD_SSRC ||
+        imxasrc->method == GST_IMXASRC_METHOD_DSPC)
+      gst_imxasrc_converter_set_quality (imxasrc->converter, imxasrc->quality);
   } else if (in && out) {
     gboolean ret;
 
-    if (imxasrc->is_hw_resample)
-      ret =
-        gst_imxasrc_converter_update_config (imxasrc->hw_converter, in->rate,
-                                             out->rate, options);
-    else
-      ret =
-        gst_audio_converter_update_config (imxasrc->sw_converter, in->rate,
+    ret =
+      gst_imxasrc_converter_update_config (imxasrc->converter, in->rate,
                                            out->rate, options);
     if (!ret)
       goto update_failed;
@@ -378,11 +444,6 @@ gst_imxasrc_set_caps (GstBaseTransform * trans, GstCaps * incaps,
   if (!gst_audio_info_from_caps (&out, outcaps))
     goto invalid_outcaps;
 
-  if (in.rate / out.rate > 16 || out.rate / in.rate > 16) {
-    GST_ERROR_OBJECT (trans, "sample rate conversion ratio should not exceed 16");
-    return FALSE;
-  }
-
   /* Reset timestamp tracking and drain the resampler if the audio format is
    * changing. Especially when changing the sample rate our timestamp tracking
    * will be completely off, but even otherwise we would usually lose the last
@@ -399,14 +460,10 @@ gst_imxasrc_set_caps (GstBaseTransform * trans, GstCaps * incaps,
     imxasrc->samples_in = 0;
     imxasrc->samples_out = 0;
     imxasrc->need_discont = TRUE;
-  /* TODO sw and hw select */
-    imxasrc->is_hw_resample = TRUE;
   }
 
-  if (!gst_imxasrc_update_state (imxasrc, &in, &out)) {
-    GST_ERROR_OBJECT (trans, "gst_imxasrc_update_state failed");
-    return FALSE;
-  }
+  if (!gst_imxasrc_update_state (imxasrc, &in, &out))
+    goto invalid_configs;
 
   imxasrc->in = in;
   imxasrc->out = out;
@@ -422,6 +479,11 @@ invalid_incaps:
 invalid_outcaps:
   {
     GST_ERROR_OBJECT (trans, "invalid outcaps");
+    return FALSE;
+  }
+invalid_configs:
+  {
+    GST_ERROR_OBJECT (trans, "invalid configs");
     return FALSE;
   }
 }
@@ -447,17 +509,11 @@ gst_imxasrc_transform_size (GstBaseTransform * trans, GstPadDirection direction,
 
   if (direction == GST_PAD_SINK) {
     /* asked to convert size of an incoming buffer */
-    if (imxasrc->is_hw_resample)
-      *othersize = gst_imxasrc_converter_get_out_frames (imxasrc->hw_converter, size);
-    else
-      *othersize = gst_audio_converter_get_out_frames (imxasrc->sw_converter, size);
+    *othersize = gst_imxasrc_converter_get_out_frames (imxasrc->converter, size);
     *othersize *= bpf;
   } else {
     /* asked to convert size of an outgoing buffer */
-    if (imxasrc->is_hw_resample)
-      *othersize = 0;
-    else
-      *othersize = gst_audio_converter_get_in_frames (imxasrc->sw_converter, size);
+    *othersize = 0;
     *othersize *= bpf;
   }
 
@@ -530,10 +586,7 @@ gst_imxasrc_process (GstImxASRC * resample, GstBuffer * inbuf,
       inbuf_writable ? GST_MAP_READWRITE : GST_MAP_READ);
 
   in_len = srcabuf.n_samples;
-  if (resample->is_hw_resample)
-    out_len = gst_imxasrc_converter_get_out_frames (resample->hw_converter, in_len);
-  else
-    out_len = gst_audio_converter_get_out_frames (resample->sw_converter, in_len);
+  out_len = gst_imxasrc_converter_get_out_frames (resample->converter, in_len);
 
   GST_DEBUG_OBJECT (resample, "in %" G_GSIZE_FORMAT " frames, out %"
       G_GSIZE_FORMAT " frames", in_len, out_len);
@@ -548,12 +601,8 @@ gst_imxasrc_process (GstImxASRC * resample, GstBuffer * inbuf,
 
   gst_audio_buffer_map (&dstabuf, &resample->out, outbuf, GST_MAP_WRITE);
 
-  if (resample->is_hw_resample)
-    gst_imxasrc_converter_samples (resample->hw_converter, 0, srcabuf.planes,
-      in_len, dstabuf.planes, out_len);
-  else
-    gst_audio_converter_samples (resample->sw_converter, 0, srcabuf.planes,
-      in_len, dstabuf.planes, out_len);
+  gst_imxasrc_converter_samples (resample->converter, 0, srcabuf.planes,
+    in_len, dstabuf.planes, out_len);
 
   /* time */
   if (GST_CLOCK_TIME_IS_VALID (resample->t0)) {
@@ -631,14 +680,60 @@ gst_imxasrc_transform (GstBaseTransform * trans, GstBuffer * inbuf,
   return GST_FLOW_OK;
 }
 
+static gboolean gst_imx_asrc_register (GstPlugin * plugin)
+{
+  GTypeInfo tinfo = {
+    sizeof (GstImxASRCClass),
+    NULL,
+    NULL,
+    (GClassInitFunc) gst_imxasrc_class_init,
+    NULL,
+    NULL,
+    sizeof (GstImxASRC),
+    0,
+    (GInstanceInitFunc) gst_imxasrc_init,
+  };
+
+  GType type;
+  gchar *t_name;
+
+  const ImxASRCDeviceInfo *in_plugin = imx_get_asrc_devices();
+  while (in_plugin->name) {
+    GST_LOG ("Registering %s asrc", in_plugin->name);
+    if (!in_plugin->is_exist()) {
+      GST_WARNING("device %s not exist", in_plugin->name);
+      in_plugin++;
+      continue;
+    }
+
+    t_name = g_strdup_printf ("imxasrc_%s", in_plugin->name);
+    type = g_type_from_name (t_name);
+
+    if (!type) {
+      type = g_type_register_static (GST_TYPE_BASE_TRANSFORM, t_name, &tinfo, 0);
+      g_type_set_qdata (type, GST_IMX_ASRC_PARAMS_QDATA, (gpointer) in_plugin);
+    }
+
+    if (!gst_element_register (plugin, t_name, IMX_GST_PLUGIN_RANK, type)) {
+      GST_ERROR ("Failed to register %s", t_name);
+      g_free (t_name);
+      return FALSE;
+    }
+    g_free (t_name);
+
+    in_plugin++;
+  }
+
+  return TRUE;
+}
+
 static gboolean
 plugin_init (GstPlugin * plugin)
 {
-  if (IS_IMX8MP())
-    return gst_element_register (plugin, "imxasrc", GST_RANK_NONE,
-        GST_TYPE_IMXASRC);
+  GST_DEBUG_CATEGORY_INIT (gst_imxasrc_debug_category, "imxasrc", 0,
+      "i.MX Audio Sample Rate Converter element");
 
-  return FALSE;
+  return gst_imx_asrc_register (plugin);
 }
 
-IMX_GST_PLUGIN_DEFINE (imxasrc, "i.MX ASRC Plugins", plugin_init);
+IMX_GST_PLUGIN_DEFINE (imxasrc, "i.MX Audio Sample Rate Converter Plugins", plugin_init);
