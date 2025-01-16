@@ -786,8 +786,11 @@ static gboolean beepdec_send_gap_event (GstAudioDecoder * dec, GstClockTime ts)
     }
 
     if (!GST_CLOCK_TIME_IS_VALID(ts)) {
-        /* The output segment position will update when sending decoded buffer */
-        if (GST_CLOCK_TIME_IS_VALID (dec->output_segment.position)) {
+        /* The output segment position will update when sending
+         * decoded buffer. Update the last timestamp only if it's
+         * not zero because it may be cleared in some cases */
+        if (GST_CLOCK_TIME_IS_VALID (dec->output_segment.position)
+            && dec->output_segment.position) {
             beepdec->last_timestamp = dec->output_segment.position;
         }
         goto done;
