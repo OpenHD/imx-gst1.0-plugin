@@ -59,6 +59,7 @@ struct _AiurContent
     gboolean seekable;
     gboolean adaptive_playback;
     gboolean adaptive_vod;
+    gboolean nonseekable_http;
 
     gboolean random_access;
     guint32 flags;
@@ -677,6 +678,14 @@ static void aiurcontent_set_flag (AiurContent *pContent)
       pContent->random_access = TRUE;
   }
 
+  pContent->nonseekable_http = FALSE;
+  if (uri_protocal
+      && (strcmp (uri_protocal, "http") == 0 || strcmp (uri_protocal, "https"))) {
+      pContent->nonseekable_http = !pContent->seekable && !pContent->adaptive_playback;
+  }
+
+  GST_DEBUG ("http stream playback %s seekable", pContent->nonseekable_http ? "isn't":"is");
+
   if(uri_protocal){
     g_free(uri_protocal);
   }
@@ -822,6 +831,13 @@ gboolean aiurcontent_is_adaptive_vod(AiurContent * pContent)
         return FALSE;
 
     return pContent->adaptive_vod;
+}
+gboolean aiurcontent_is_nonseekable_http(AiurContent * pContent)
+{
+    if(!pContent)
+        return FALSE;
+
+    return pContent->nonseekable_http;
 }
 gchar* aiurcontent_get_url(AiurContent * pContent)
 {

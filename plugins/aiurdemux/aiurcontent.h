@@ -43,6 +43,7 @@ gboolean aiurcontent_is_seelable(AiurContent * pContent);
 gboolean aiurcontent_is_random_access(AiurContent * pContent);
 gboolean aiurcontent_is_adaptive_playback(AiurContent * pContent);
 gboolean aiurcontent_is_adaptive_vod(AiurContent * pContent);
+gboolean aiurcontent_is_nonseekable_http(AiurContent * pContent);
 gchar* aiurcontent_get_url(AiurContent * pContent);
 gchar* aiurcontent_get_index_file(AiurContent * pContent);
 

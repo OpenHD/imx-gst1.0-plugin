@@ -1800,7 +1800,8 @@ static GstFlowReturn aiurdemux_loop_state_movie (GstAiurDemux * demux)
   if((demux->seekable == FALSE)
       && !aiurcontent_is_seelable(demux->content_info)
       && !aiurcontent_is_random_access(demux->content_info)
-      && !aiurcontent_is_adaptive_playback (demux->content_info))
+      && !aiurcontent_is_adaptive_playback (demux->content_info)
+      && !aiurcontent_is_nonseekable_http(demux->content_info))
         aiurdemux_check_start_offset(demux, stream);
 
     aiurdemux_adjust_timestamp (demux, stream, stream->buffer);
@@ -3657,7 +3658,8 @@ aiurdemux_adjust_timestamp (GstAiurDemux * demux, AiurDemuxStream * stream,
       || (!GST_CLOCK_TIME_IS_VALID (stream->sample_stat.start))) {
     GST_BUFFER_TIMESTAMP (buffer) = stream->sample_stat.start;
 
-    if (aiurcontent_is_adaptive_playback(demux->content_info)) {
+    if (aiurcontent_is_adaptive_playback(demux->content_info)
+      || aiurcontent_is_nonseekable_http(demux->content_info)) {
       demux->base_offset = stream->sample_stat.start;
       GST_BUFFER_TIMESTAMP (buffer) = 0;
     }
