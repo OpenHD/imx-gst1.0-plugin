@@ -1629,7 +1629,7 @@ bus_callback (GstBus *bus, GstMessage *message, gpointer data)
       error_cb (play, error, sPlay);
       break;
     case GST_PLAY_MESSAGE_SEEK_DONE:
-      gst_play_message_parse_position_updated (message, &position);
+      gst_play_message_parse_seek_done (message, &position);
       seek_done_cb (play, position, sPlay);
       break;
     default:
