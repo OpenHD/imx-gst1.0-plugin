@@ -739,6 +739,10 @@ static gboolean imx_ocl_get_alignment (Imx2DDevice* device, GstVideoInfo *in_inf
       if (!align_info->is_output)
         align_info->is_apply = FALSE;
     }
+
+    /* Apply alignment information only for RGB scale case */
+    if (out_map->ocl_pixel_format != OCL_FORMAT_RGB888)
+      align_info->is_apply = FALSE;
   } else {
     if (!ocl->warp_param.enable)
       align_info->is_apply = FALSE;
