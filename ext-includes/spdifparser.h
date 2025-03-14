@@ -103,6 +103,7 @@ typedef enum
     SPDIF_PARSER_API_GET_SAMPLE_RATE                = 14,
     SPDIF_PARSER_API_GET_CHANNEL_NUM                = 15,
     SPDIF_PARSER_API_GET_DATA_LENGTH                = 16,
+    SPDIF_PARSER_API_SET_DEFAULT_WORD_LENGTH        = 17,
 }SPDIF_PARSER_API_TYPE;
 
 typedef const char * (*spdif_parser_get_version_info_t)(void);
@@ -122,6 +123,7 @@ typedef SPDIF_IEC937_FORMAT_TYPE (*spdif_parser_get_iec937_type_t)(spdif_parser_
 typedef uint32_t (*spdif_parser_get_sample_rate_t)(spdif_parser_handle handle);
 typedef uint32_t (*spdif_parser_get_channel_num_t)(spdif_parser_handle handle);
 typedef uint32_t (*spdif_parser_get_data_length_t)(spdif_parser_handle handle);
+typedef SPDIF_RET_TYPE (*spdif_parser_set_default_word_length_t)(spdif_parser_handle handle, uint32_t word_length);
 typedef SPDIF_RET_TYPE (*spdif_parser_query_interface_t)(uint32_t id, void ** func);
 
 const char * spdif_parser_get_version_info(void);
@@ -141,6 +143,7 @@ SPDIF_IEC937_FORMAT_TYPE spdif_parser_get_iec937_type(spdif_parser_handle handle
 uint32_t spdif_parser_get_sample_rate(spdif_parser_handle handle);
 uint32_t spdif_parser_get_channel_num(spdif_parser_handle handle);
 uint32_t spdif_parser_get_data_length(spdif_parser_handle handle);
+SPDIF_RET_TYPE spdif_parser_set_default_word_length(spdif_parser_handle handle, uint32_t word_length);
 
 #ifdef __cplusplus
 }

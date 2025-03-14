@@ -81,10 +81,12 @@ static void gst_spdifdemux_get_property (GObject * object, guint prop_id,
     GValue * value, GParamSpec * pspec);
 
 #define DEFAULT_IEC958_FORMAT		  IEC958_FORMAT_UNKNOWN
+#define IEC958_PCM_DEFAULT_WORD_LENGTH  16
 enum
 {
   PROP_0,
   PROP_IEC958_FORMAT,
+  PROP_PCM_DEFAULT_WORD_LENGTH,
 };
 
 /* audio/x-raw for iec937 frame, audio/x-iec958 for iec958 frame */
@@ -145,6 +147,7 @@ uint32_t spdif_parser_if_id_tbl[] = {
   SPDIF_PARSER_API_GET_SAMPLE_RATE,
   SPDIF_PARSER_API_GET_CHANNEL_NUM,
   SPDIF_PARSER_API_GET_DATA_LENGTH,
+  SPDIF_PARSER_API_SET_DEFAULT_WORD_LENGTH,
 };
 
 gboolean
@@ -269,6 +272,13 @@ gst_spdifdemux_class_init (GstSpdifDemuxClass * klass)
           "Iec958 format type which can be unknown, linear pcm or iec937. Default is unknown",
           gst_spdifdemux_get_iec958_format (),
           DEFAULT_IEC958_FORMAT, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+  g_object_class_install_property (object_class, PROP_PCM_DEFAULT_WORD_LENGTH,
+      g_param_spec_uint ("pcm-default-word-length",
+          "pcm default word length",
+          "Configure iec958 PCM word length and takes effect only if it is not indicated in the channel status"
+          " Default value is 16. Configureable value: 16, 24.",
+          0, G_MAXUINT, IEC958_PCM_DEFAULT_WORD_LENGTH,
+        G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
   gstelement_class->change_state = gst_spdifdemux_change_state;
 
@@ -339,6 +349,7 @@ static void
 gst_spdifdemux_init (GstSpdifDemux * spdifdemux)
 {
   gst_spdifdemux_reset (spdifdemux);
+  spdifdemux->default_word_length = IEC958_PCM_DEFAULT_WORD_LENGTH;
 
   /* Create spdif parser interface */
   if (!gst_spdifdemux_create_spdif_parser_interface (spdifdemux,
@@ -700,6 +711,14 @@ gst_spdifdemux_search_header (GstSpdifDemux * spdif)
 {
   GstFlowReturn ret = GST_FLOW_ERROR;
   SPDIF_RET_TYPE status = SPDIF_ERR_PARAM;
+
+  /* Set iec958 PCM default work length to 16bit. The parameter
+   * takes effect if it is not indicated in the channel status.
+   */
+  if (spdif->spdif_parser_if->spdif_parser_set_default_word_length) {
+    spdif->spdif_parser_if->spdif_parser_set_default_word_length (spdif->handle,
+        spdif->default_word_length);
+  }
 
   if (spdif->streaming) {
     status = gst_spdifdemux_search_header_push (spdif, spdif->adapter);
@@ -1397,6 +1416,20 @@ gst_spdifdemux_set_property (GObject * object, guint prop_id,
         GST_DEBUG_OBJECT (self, "iec958_format: unknown format");
       }
     }
+    case PROP_PCM_DEFAULT_WORD_LENGTH:
+    {
+      uint data_length = g_value_get_uint (value);
+      spdif_parser_if_t *parser = self->spdif_parser_if;
+
+      if (parser->spdif_parser_set_default_word_length) {
+        if (SPDIF_OK == parser->spdif_parser_set_default_word_length (self->handle, data_length)) {
+          self->default_word_length = data_length;
+          GST_DEBUG_OBJECT (self, "Configure iec958 pcm default word length: %d", data_length);
+        } else {
+          GST_DEBUG_OBJECT (self, "Default word length: %d is not supported", data_length);
+        }
+      }
+    }
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (self, prop_id, pspec);
@@ -1416,6 +1449,9 @@ gst_spdifdemux_get_property (GObject * object, guint prop_id,
   switch (prop_id) {
     case PROP_IEC958_FORMAT:
       g_value_set_enum (value, self->iec958_format);
+      break;
+    case PROP_PCM_DEFAULT_WORD_LENGTH:
+      g_value_set_uint (value, self->default_word_length);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (self, prop_id, pspec);

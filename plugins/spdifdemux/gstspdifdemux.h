@@ -67,6 +67,7 @@ typedef struct
   spdif_parser_get_sample_rate_t spdif_parser_get_sample_rate;
   spdif_parser_get_channel_num_t spdif_parser_get_channel_num;
   spdif_parser_get_data_length_t spdif_parser_get_data_length;
+  spdif_parser_set_default_word_length_t spdif_parser_set_default_word_length;
 } spdif_parser_if_t;
 
 typedef enum
@@ -137,6 +138,8 @@ struct _GstSpdifDemux
   spdif_parser_handle handle;
   /* iec958 audio format selection if know */
   IEC958_FORMAT iec958_format;
+  /* iec958 PCM default word length */
+  uint default_word_length;
   
   /* data structure for calculating bps */
   BpsCalcInfo fs_calc_param;
