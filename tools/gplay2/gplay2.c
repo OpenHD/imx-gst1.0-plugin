@@ -1132,7 +1132,7 @@ input_thread_fun (gpointer data)
           seek_point_sec = (guint64) (seek_portion * duration_sec / 100);
         }
         gDisable_display = FALSE;
-        gst_play_config_set_seek_accurate (play, accurate_seek);
+        gst_play_set_seek_accurate (play, accurate_seek);
         gst_play_seek (play, seek_point_sec * GST_SECOND);
         wait_for_seek_done (sPlay, options->timeout);
       }
