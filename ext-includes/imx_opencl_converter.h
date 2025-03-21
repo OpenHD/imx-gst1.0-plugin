@@ -1,5 +1,5 @@
 /*
- * Copyright 2023-2024 NXP
+ * Copyright 2023-2025 NXP
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Library General Public
@@ -58,6 +58,7 @@ typedef enum ocl_pixel_format{
     OCL_FORMAT_NV15 = 15,
     OCL_FORMAT_NV15_TILED = 16,
     OCL_FORMAT_YUYV = 17,
+    OCL_FORMAT_NV16 = 18,
 }OCL_PIXEL_FORMAT;
 
 typedef struct {
