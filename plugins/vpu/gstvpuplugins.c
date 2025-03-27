@@ -33,12 +33,14 @@ static gboolean
 plugin_init (GstPlugin * plugin)
 {
   if (HAS_VPU()) {
+    guint rank = IMX_GST_PLUGIN_RANK;
     if (!IS_HANTRO() || IS_IMX8MM() || IS_IMX8MP())
       if (!gst_vpu_enc_register (plugin))
         return FALSE;
-    
-    if (!gst_element_register (plugin, "vpudec", IMX_GST_PLUGIN_RANK,
-          GST_TYPE_VPU_DEC))
+
+    if (imx_chip_code() >= CC_MX8)
+      rank = GST_RANK_SECONDARY;
+    if (!gst_element_register (plugin, "vpudec", rank, GST_TYPE_VPU_DEC))
       return FALSE;
 
     return TRUE;
