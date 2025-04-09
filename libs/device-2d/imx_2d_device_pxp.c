@@ -56,7 +56,7 @@ typedef struct {
   guint bpp;
 } PxpFmtMap;
 
-static PxpFmtMap pxp_in_fmts_map[] = {
+static PxpFmtMap pxp_in_fmts_map_v1[] = {
     {GST_VIDEO_FORMAT_BGRx,   PXP_PIX_FMT_RGB32,    32},
     {GST_VIDEO_FORMAT_RGB16,  PXP_PIX_FMT_RGB565,   16},
     {GST_VIDEO_FORMAT_RGB15,  PXP_PIX_FMT_RGB555,   16},
@@ -86,7 +86,36 @@ static PxpFmtMap pxp_in_fmts_map[] = {
     {GST_VIDEO_FORMAT_UNKNOWN, -1,          0}
 };
 
-static PxpFmtMap pxp_out_fmts_map[] = {
+static PxpFmtMap pxp_in_fmts_map_v2[] = {
+    {GST_VIDEO_FORMAT_BGRx,  PXP_PIX_FMT_RGB32,    32},
+    {GST_VIDEO_FORMAT_BGRA,  PXP_PIX_FMT_ARGB32,   32},
+    {GST_VIDEO_FORMAT_ABGR,  PXP_PIX_FMT_RGBA32,   32},
+    {GST_VIDEO_FORMAT_RGBA,  PXP_PIX_FMT_ABGR32,   32},
+    {GST_VIDEO_FORMAT_ARGB,  PXP_PIX_FMT_BGRA32,   32},
+    {GST_VIDEO_FORMAT_RGBx,  PXP_PIX_FMT_XBGR32,   32},
+    {GST_VIDEO_FORMAT_BGR,   PXP_PIX_FMT_RGB24,   24},
+    {GST_VIDEO_FORMAT_RGB,   PXP_PIX_FMT_BGR24,   24},
+    {GST_VIDEO_FORMAT_RGB16,  PXP_PIX_FMT_RGB565,   16},
+    {GST_VIDEO_FORMAT_RGB15,  PXP_PIX_FMT_RGB555,   16},
+
+    {GST_VIDEO_FORMAT_I420,   PXP_PIX_FMT_YUV420P,  12},
+    {GST_VIDEO_FORMAT_YV12,   PXP_PIX_FMT_YVU420P,  12},
+    {GST_VIDEO_FORMAT_Y42B,   PXP_PIX_FMT_YUV422P,  16},
+    {GST_VIDEO_FORMAT_UYVY,   PXP_PIX_FMT_UYVY,     16},
+    {GST_VIDEO_FORMAT_YUY2,   PXP_PIX_FMT_YUYV,     16},
+    {GST_VIDEO_FORMAT_YVYU,   PXP_PIX_FMT_YVYU,     16},
+    {GST_VIDEO_FORMAT_NV12,   PXP_PIX_FMT_NV12,     12},
+    {GST_VIDEO_FORMAT_NV21,   PXP_PIX_FMT_NV21,     12},
+    {GST_VIDEO_FORMAT_NV16,   PXP_PIX_FMT_NV16,     16},
+
+    /* There is no gst video format for those PXP input formats */
+    //{GST_VIDEO_FORMAT_UNKNOWN,  PXP_PIX_FMT_ARGB555,   16},
+    //{GST_VIDEO_FORMAT_UNKNOWN,  PXP_PIX_FMT_ARGB444,   16},
+
+    {GST_VIDEO_FORMAT_UNKNOWN, -1,          0}
+};
+
+static PxpFmtMap pxp_out_fmts_map_v1[] = {
     {GST_VIDEO_FORMAT_BGRx,   PXP_PIX_FMT_RGB32,    32},
     {GST_VIDEO_FORMAT_BGRA,   PXP_PIX_FMT_ARGB32,   32},
     {GST_VIDEO_FORMAT_BGR,    PXP_PIX_FMT_RGB24,    24},
@@ -107,6 +136,27 @@ static PxpFmtMap pxp_out_fmts_map[] = {
     PXP_PIX_FMT_VYUY
     PXP_PIX_FMT_NV61
      */
+
+    {GST_VIDEO_FORMAT_UNKNOWN, -1,          0}
+};
+
+static PxpFmtMap pxp_out_fmts_map_v2[] = {
+    {GST_VIDEO_FORMAT_BGRx,   PXP_PIX_FMT_RGB32,    32},
+    {GST_VIDEO_FORMAT_BGRA,   PXP_PIX_FMT_ARGB32,   32},
+    {GST_VIDEO_FORMAT_ABGR,   PXP_PIX_FMT_RGBA32,   32},
+    {GST_VIDEO_FORMAT_RGBA,   PXP_PIX_FMT_ABGR32,   32},
+    {GST_VIDEO_FORMAT_ARGB,   PXP_PIX_FMT_BGRA32,   32},
+    {GST_VIDEO_FORMAT_RGBx,   PXP_PIX_FMT_XBGR32,   32},
+    {GST_VIDEO_FORMAT_BGR,    PXP_PIX_FMT_RGB24,   24},
+    {GST_VIDEO_FORMAT_RGB,    PXP_PIX_FMT_BGR24,   24},
+    {GST_VIDEO_FORMAT_RGB16,  PXP_PIX_FMT_RGB565,   16},
+
+    {GST_VIDEO_FORMAT_GRAY8,  PXP_PIX_FMT_GREY,     8},
+    {GST_VIDEO_FORMAT_UYVY,   PXP_PIX_FMT_UYVY,     16},
+
+    /* There is no gst video format for those PXP input formats */
+    //{GST_VIDEO_FORMAT_UNKNOWN,  PXP_PIX_FMT_ARGB555,   16},
+    //{GST_VIDEO_FORMAT_UNKNOWN,  PXP_PIX_FMT_ARGB444,   16},
 
     {GST_VIDEO_FORMAT_UNKNOWN, -1,          0}
 };
@@ -279,11 +329,20 @@ static gint imx_pxp_frame_copy(Imx2DDevice *device,
 
 static gint imx_pxp_config_input(Imx2DDevice *device, Imx2DVideoInfo* in_info)
 {
+  const PxpFmtMap *map = NULL;
+  const PxpFmtMap *in_map = NULL;
+
   if (!device || !device->priv)
     return -1;
 
   Imx2DDevicePxp *pxp = (Imx2DDevicePxp *) (device->priv);
-  const PxpFmtMap *in_map = imx_pxp_get_format(in_info->fmt, pxp_in_fmts_map);
+
+  if (imx_chip_code() >= CC_MX943)
+    map = pxp_in_fmts_map_v2;
+  else
+    map = pxp_in_fmts_map_v1;
+
+  in_map= imx_pxp_get_format(in_info->fmt, map);
   if (!in_map)
     return -1;
 
@@ -305,11 +364,20 @@ static gint imx_pxp_config_input(Imx2DDevice *device, Imx2DVideoInfo* in_info)
 
 static gint imx_pxp_config_output(Imx2DDevice *device, Imx2DVideoInfo* out_info)
 {
+  const PxpFmtMap *map = NULL;
+  const PxpFmtMap *out_map = NULL;
+
   if (!device || !device->priv)
     return -1;
 
   Imx2DDevicePxp *pxp = (Imx2DDevicePxp *) (device->priv);
-  const PxpFmtMap *out_map = imx_pxp_get_format(out_info->fmt,pxp_out_fmts_map);
+
+  if (imx_chip_code() >= CC_MX943)
+    map = pxp_out_fmts_map_v2;
+  else
+    map = pxp_out_fmts_map_v1;
+
+  out_map = imx_pxp_get_format(out_info->fmt, map);
   if (!out_map)
     return -1;
 
@@ -456,6 +524,7 @@ static gint imx_pxp_blend_without_alpha(Imx2DDevice *device,
 {
   guint BPP = 4;
   const PxpFmtMap *fmt_map = NULL;
+  const PxpFmtMap *out_map = NULL;
 
   if (!device || !device->priv || !dst || !src || !dst->mem || !src->mem)
     return -1;
@@ -463,7 +532,12 @@ static gint imx_pxp_blend_without_alpha(Imx2DDevice *device,
   Imx2DDevicePxp *pxp = (Imx2DDevicePxp *) (device->priv);
   memset(&pxp->config.ol_param[0], 0, sizeof(struct pxp_layer_param));
 
-  fmt_map = imx_pxp_get_format(dst->info.fmt, pxp_out_fmts_map);
+  if (imx_chip_code() >= CC_MX943)
+    out_map = pxp_out_fmts_map_v2;
+  else
+    out_map = pxp_out_fmts_map_v1;
+
+  fmt_map = imx_pxp_get_format(dst->info.fmt, out_map);
   if (fmt_map)
     BPP = fmt_map->bpp/8 + (fmt_map->bpp%8 ? 1 : 0);
 
@@ -523,6 +597,7 @@ static gint imx_pxp_overlay(Imx2DDevice *device,
   guint orig_src_fmt;
   guint BPP = 4;
   const PxpFmtMap *fmt_map = NULL;
+  const PxpFmtMap *out_map = NULL;
 
   if (!device || !device->priv || !dst || !src || !dst->mem || !src->mem)
     return -1;
@@ -542,7 +617,12 @@ static gint imx_pxp_overlay(Imx2DDevice *device,
       return -1;
   }
 
-  fmt_map = imx_pxp_get_format(dst->info.fmt, pxp_out_fmts_map);
+  if (imx_chip_code() >= CC_MX943)
+    out_map = pxp_out_fmts_map_v2;
+  else
+    out_map = pxp_out_fmts_map_v1;
+
+  fmt_map = imx_pxp_get_format(dst->info.fmt, out_map);
   if (fmt_map)
     BPP = fmt_map->bpp/8 + (fmt_map->bpp%8 ? 1 : 0);
 
@@ -996,7 +1076,12 @@ static gint imx_pxp_get_capabilities (Imx2DDevice* device)
 static GList* imx_pxp_get_supported_in_fmts(Imx2DDevice* device)
 {
   GList* list = NULL;
-  const PxpFmtMap *map = pxp_in_fmts_map;
+  const PxpFmtMap *map = NULL;
+
+  if (imx_chip_code() >= CC_MX943)
+    map = pxp_in_fmts_map_v2;
+  else
+    map = pxp_in_fmts_map_v1;
 
   while (map->gst_video_format != GST_VIDEO_FORMAT_UNKNOWN) {
     list = g_list_append(list, (gpointer)(map->gst_video_format));
@@ -1009,7 +1094,12 @@ static GList* imx_pxp_get_supported_in_fmts(Imx2DDevice* device)
 static GList* imx_pxp_get_supported_out_fmts(Imx2DDevice* device)
 {
   GList* list = NULL;
-  const PxpFmtMap *map = pxp_out_fmts_map;
+  const PxpFmtMap *map = NULL;
+
+  if (imx_chip_code() >= CC_MX943)
+    map = pxp_out_fmts_map_v2;
+  else
+    map = pxp_out_fmts_map_v1;
 
   while (map->gst_video_format != GST_VIDEO_FORMAT_UNKNOWN) {
     list = g_list_append(list, (gpointer)(map->gst_video_format));
