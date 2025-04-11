@@ -4,7 +4,7 @@
 * All modifications are confidential and proprietary information
 * of Freescale Semiconductor, Inc. 
 *
-* Copyright 2017-2021 NXP
+* Copyright 2017-2023, 2025 NXP
 ***********************************************************************/
 /*
 * This library is free software; you can redistribute it and/or
@@ -82,6 +82,7 @@ typedef enum
     VIDEO_AVS,
     VIDEO_AV1,
     VIDEO_DOLBY_VISION,
+    VIDEO_APV,
 }VideoCodecType;
 
 
@@ -116,6 +117,8 @@ typedef enum
     AUDIO_ALAC, /* Apple lossless audio codec */
     AUDIO_MPEGH_MHA1,
     AUDIO_MPEGH_MHM1,
+    AUDIO_DTS_HD,
+    AUDIO_DTS_UHD
 }AudioCodecType;
 
 
@@ -173,7 +176,8 @@ typedef enum
     VIDEO_WMV9A,    /* Windows Media Video 9 Advanced Profile. The codec originally submitted for consideration as SMPTE VC1. 
                     This is not VC1 compliant and is no longer supported by Microsoft */
                     
-    VIDEO_WVC1      /* Microsoft's implementation of the SMPTE VC1 codec */
+    VIDEO_WVC1,     /* Microsoft's implementation of the SMPTE VC1 codec */
+    VIDEO_MSS2      /* Windows Media Video 9 Screen */
     
 }WMVVideoTypes; /* WMV video types */
 
