@@ -134,7 +134,7 @@ gint imx_2d_device_destroy(Imx2DDevice *device)
   return -1;
 }
 
-GstVideoFormat imx_g2d_device_get_fixed_format (GstCaps * caps)
+GstVideoFormat imx_g2d_device_get_fixed_format (GstCaps * caps, gint *width, gint *height)
 {
   gint i, caps_size;
   GstStructure *st;
@@ -164,6 +164,15 @@ GstVideoFormat imx_g2d_device_get_fixed_format (GstCaps * caps)
         }
         /* Has the fixed format and get it below */
         format = val;
+
+        /* Get width and height information if needed */
+        if (width && height) {
+          if (!gst_structure_get (st, "width", G_TYPE_INT, width, "height",
+              G_TYPE_INT, height, NULL)) {
+            *width = 0;
+            *height = 0;
+          }
+        }
       } else {
         out_fmt = GST_VIDEO_FORMAT_UNKNOWN;
         GST_TRACE ("No fixed format in the list");
@@ -178,6 +187,15 @@ GstVideoFormat imx_g2d_device_get_fixed_format (GstCaps * caps)
       if (out_fmt == GST_VIDEO_FORMAT_UNKNOWN) {
         /* Record the first fixed format */
         out_fmt = gst_video_format_from_string(fmt_name);
+
+        /* Get width and height information if needed */
+        if (width && height) {
+          if (!gst_structure_get (st, "width", G_TYPE_INT, width, "height",
+              G_TYPE_INT, height, NULL)) {
+            *width = 0;
+            *height = 0;
+          }
+        }
       } else if (out_fmt != gst_video_format_from_string(fmt_name)) {
         out_fmt = GST_VIDEO_FORMAT_UNKNOWN;
         GST_TRACE ("No fixed format in the caps");

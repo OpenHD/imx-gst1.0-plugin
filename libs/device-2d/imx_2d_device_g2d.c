@@ -794,8 +794,8 @@ static gboolean imx_g2d_check_conversion (Imx2DDevice *device, GstCaps *input_ca
   }
 
   /* Check whether the input and output caps have fixed format */
-  in_format = imx_g2d_device_get_fixed_format(input_caps);
-  out_format = imx_g2d_device_get_fixed_format(output_caps);
+  in_format = imx_g2d_device_get_fixed_format(input_caps, NULL, NULL);
+  out_format = imx_g2d_device_get_fixed_format(output_caps, NULL, NULL);
   if (in_format == GST_VIDEO_FORMAT_UNKNOWN
       || out_format == GST_VIDEO_FORMAT_UNKNOWN) {
     GST_INFO ("No fixed input or output format, input caps %" GST_PTR_FORMAT

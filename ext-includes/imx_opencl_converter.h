@@ -64,6 +64,8 @@ typedef enum ocl_pixel_format{
 typedef struct {
     OCL_PIXEL_FORMAT input_format;
     OCL_PIXEL_FORMAT output_format;
+    /* A combination of one or more #OCL_MAP_TYPE types */
+    unsigned int map_flag;
 }OCL_PIXEL_FORMAT_GROUP;
 
 typedef enum ocl_colorspace{
@@ -195,6 +197,20 @@ typedef enum {
     OCL_ALLOCATOR_UNCACHED_DMABUF,
 } OCL_ALLOCATOR_TYPE;
 
+typedef enum {
+    OCL_MAP_NULL = 0,
+    OCL_MAP_CSC = 1,
+    OCL_MAP_CSC_DOWNSCALE = 2,
+    OCL_MAP_WARP = 4,
+    OCL_MAP_WARP_DOWNSCALE = 8,
+}OCL_MAP_TYPE;
+
+typedef enum {
+    OCL_OPCODE_NULL = 0,
+    OCL_OPCODE_CSC,
+    OCL_OPCODE_WARP,
+} OCL_OPCODE_TYPE;
+
 /*
  * Function to get the opencl convert library version.
  *
@@ -241,6 +257,23 @@ OCL_RESULT OCL_QuerySupportMap(int * num_of_group, OCL_PIXEL_FORMAT_GROUP ** fmt
  * @return value in OCL_RESULT.
  */
 OCL_RESULT OCL_QuerySupportWarpMap(int * num_of_group, OCL_PIXEL_FORMAT_GROUP ** fmt_group);
+
+/**
+ * Function to check the specify conversion by opcode
+ * The #left, #right, #top and #bottom variables in the #OCL_FORMAT
+ * data structure is used to check whether the conversion is downscale
+ * case or not. If any of these variables is zero, the function will
+ * check both common case and downscale case. The #format variable in
+ * the #OCL_FORMAT data structure is used to check video format. User
+ * can check the conversion is supported or not. Then decice whether
+ * to use this library to do conversion.
+ *
+ * @param opcode [in] value in OCL_OPCODE_TYPE.
+ * @param src_fmt [in] ocl format of input.
+ * @param dst_fmt [in] ocl format of output.
+ * @return value in OCL_RESULT.
+ */
+OCL_RESULT OCL_CheckConversion (OCL_OPCODE_TYPE opcode, OCL_FORMAT *src_fmt, OCL_FORMAT *dst_fmt);
 
 typedef enum ocl_align_flag
 {
