@@ -1,6 +1,6 @@
 /*
  *  Copyright (C) 2013-2016 Freescale Semiconductor, Inc.
- *  Copyright 2017-2024 NXP
+ *  Copyright 2017-2025 NXP
  */
 /*
 * This library is free software; you can redistribute it and/or
@@ -41,6 +41,7 @@
  *	2021-12-02         Li Xianzhong      2.0            Add g2d fence sync extension
  *	2024-07-12         Guangliu Ding     2.2            support RGBA1010102 and GRAY8
  *	2024-11-13         Guangliu Ding     2.3            support deinterlace/48bit address/dct api
+ *	2025-04-17         Erkai Ji          2.4            Add PXP version support
 
 */
 
@@ -52,7 +53,7 @@ extern "C"  {
 #endif
 
 #define G2D_VERSION_MAJOR   2
-#define G2D_VERSION_MINOR   3
+#define G2D_VERSION_MINOR   4
 #define G2D_VERSION_PATCH   0
 
 enum g2d_format
@@ -158,7 +159,8 @@ enum g2d_hardware_type
     G2D_HARDWARE_VG           = 1,//GPU VG
     G2D_HARDWARE_DPU_V1       = 2,//DPU V1
     G2D_HARDWARE_DPU_V2       = 3,//DPU V2
-    G2D_HARDWARE_PXP          = 4,//PXP
+    G2D_HARDWARE_PXP_V1       = 4,//PXP V1
+    G2D_HARDWARE_PXP_V2       = 5,//PXP V2
 };
 
 enum g2d_status
