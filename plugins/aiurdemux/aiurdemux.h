@@ -174,6 +174,7 @@ struct _AiurDemuxVideoInfo
     uint32 height;
     uint32 fps_n;
     uint32 fps_d;
+    uint32 rotation;
     uint32 scan_type;
 };
 
@@ -242,6 +243,7 @@ struct _AiurDemuxStream
 
     AiurDemuxCodecData codec_data;
     GstTagList *pending_tags;
+    GstTagList *rotation_tags;
     gboolean send_global_tags;
 
     GstBuffer *buffer;

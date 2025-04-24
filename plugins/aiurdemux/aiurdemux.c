@@ -1032,6 +1032,15 @@ gst_aiurdemux_push_tags (GstAiurDemux * demux, AiurDemuxStream * stream)
       stream->pending_tags = NULL;
     }
 
+    if (G_UNLIKELY (stream->rotation_tags)) {
+      GST_DEBUG_OBJECT (demux, "Sending rotation tags %" GST_PTR_FORMAT,
+        stream->rotation_tags);
+      gst_pad_push_event (stream->pad,
+          gst_event_new_tag (stream->rotation_tags));
+
+      stream->rotation_tags = NULL;
+    }
+
     if (G_UNLIKELY (stream->send_global_tags && demux->tag_list)) {
       GST_DEBUG_OBJECT (demux, "Sending global tags %" GST_PTR_FORMAT,
           demux->tag_list);
@@ -2446,6 +2455,7 @@ static void aiurdemux_parse_video (GstAiurDemux * demux, AiurDemuxStream * strea
 
   int32 parser_ret = PARSER_SUCCESS;
   int32 parser_scan_type_ret = PARSER_ERR_UNKNOWN;
+  int32 parser_video_rotate_ret = PARSER_ERR_UNKNOWN;
   AiurCoreInterface *IParser = demux->core_interface;
   FslParserHandle handle = demux->core_handle;
   AiurdemuxCodecStruct * codec_struct = NULL;
@@ -2472,6 +2482,9 @@ static void aiurdemux_parse_video (GstAiurDemux * demux, AiurDemuxStream * strea
 
   if (IParser->getVideoScanType)
     parser_scan_type_ret = IParser->getVideoScanType(handle, track_index, &stream->info.video.scan_type);
+
+  if (IParser->getVideoFrameRotation)
+    parser_video_rotate_ret = IParser->getVideoFrameRotation(handle, track_index, &stream->info.video.rotation);
 
   if ((stream->info.video.fps_n > 0) && (stream->info.video.fps_d > 0)
       && (stream->info.video.fps_n /stream->info.video.fps_d) > 250) {
@@ -2565,6 +2578,24 @@ static void aiurdemux_parse_video (GstAiurDemux * demux, AiurDemuxStream * strea
   demux->n_video_streams++;
 
   stream->pending_tags = gst_tag_list_new (GST_TAG_CODEC, codec, NULL);
+
+  stream->rotation_tags = NULL;
+  if (parser_video_rotate_ret == PARSER_SUCCESS) {
+    GST_INFO ("video rotate %d", stream->info.video.rotation);
+    switch (stream->info.video.rotation) {
+      case 90:
+        stream->rotation_tags = gst_tag_list_new(GST_TAG_IMAGE_ORIENTATION, "rotate-90", NULL);
+        break;
+      case 180:
+        stream->rotation_tags = gst_tag_list_new(GST_TAG_IMAGE_ORIENTATION, "rotate-180", NULL);
+        break;
+      case 270:
+        stream->rotation_tags = gst_tag_list_new(GST_TAG_IMAGE_ORIENTATION, "rotate-270", NULL);
+        break;
+      default:
+        break;
+    }
+  }
 
   if (stream->lang[0] != '\0') {
   gst_tag_list_add (stream->pending_tags, GST_TAG_MERGE_REPLACE,
