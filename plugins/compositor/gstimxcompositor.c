@@ -1196,11 +1196,16 @@ static gint gst_imxcompositor_config_src(GstImxCompositor *imxcomp,
   src->info.stride = ppad->info.stride[0];
   }
 
-  /* For tiled format, the stride value is the tile number and need to convert to the byte size */
+/* For tiled format, the stride value is the tile number and needs to convert to byte size */
+#if defined(GST_VIDEO_FORMAT_INFO_IS_TILED) && defined(GST_VIDEO_FORMAT_INFO_TILE_STRIDE)
   if (GST_VIDEO_FORMAT_INFO_IS_TILED(ppad->info.finfo)) {
-    gint ws = GST_VIDEO_FORMAT_INFO_TILE_STRIDE (ppad->info.finfo, 0);
+    gint ws = GST_VIDEO_FORMAT_INFO_TILE_STRIDE(ppad->info.finfo, 0);
     src->info.stride = GST_VIDEO_TILE_X_TILES(src->info.stride) * ws;
   }
+#else
+  GST_DEBUG("Tiled format stride calculation skipped due to missing GStreamer macros.");
+#endif
+
 
   dmabuf_meta = gst_buffer_get_dmabuf_meta (pad_buffer);
   if (dmabuf_meta)
