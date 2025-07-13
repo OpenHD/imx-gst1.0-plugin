@@ -406,7 +406,9 @@ static gint imx_g2d_set_src_plane(struct g2d_surface *g2d_src, gchar *paddr)
     case G2D_UYVY:
     case G2D_YUYV:
     case G2D_YVYU:
+    #ifdef G2D_GRAY8
     case G2D_GRAY8:
+    #endif 
       g2d_src->planes[0] = (gintptr)(paddr);
       break;
     default:

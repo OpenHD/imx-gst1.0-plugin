@@ -80,8 +80,9 @@ enum g2d_format
 
      G2D_RGBA1010102          = 16,    /* [0:9] Red;   [10:19] Green; [20:29] Blue; [30:31] Alpha     */
 
-     G2D_GRAY8                = 19,    /* [0:7] Gray                                                  */
-
+     #ifdef G2D_GRAY8
+    case G2D_GRAY8:              = 19,    /* [0:7] Gray                                                  */
+     #endif
 //yuv formats
      G2D_NV12                 = 20,   /* 2 plane 420 format; plane 1: [0:7] Y ; plane 2: [0:7] U; [8:15] V */
      G2D_I420                 = 21,   /* 3 plane 420 format; plane 1: [0:7] Y ; plane 2: [0:7] U; plane 3: [0:7] V */
