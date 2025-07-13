@@ -1802,11 +1802,12 @@ static GstFlowReturn imx_video_convert_transform(GstBaseTransform * trans, GstBu
                 imxvct->in_video_align.padding_bottom;
     src.info.stride = in_info.stride[0];
   }
+  #if defined(GST_VIDEO_FORMAT_INFO_IS_TILED) && defined(GST_VIDEO_FORMAT_INFO_TILE_STRIDE)
   if (GST_VIDEO_FORMAT_INFO_IS_TILED(in_info.finfo)) {
-    gint ws = GST_VIDEO_FORMAT_INFO_TILE_STRIDE (in_info.finfo, 0);
-    src.info.stride = GST_VIDEO_TILE_X_TILES(src.info.stride) * ws;
+      gint ws = GST_VIDEO_FORMAT_INFO_TILE_STRIDE (in_info.finfo, 0);
+      src.info.stride = GST_VIDEO_TILE_X_TILES(src.info.stride) * ws;
   }
-
+  #endif
   dmabuf_meta = gst_buffer_get_dmabuf_meta (inbuf);
   if (dmabuf_meta) {
     drm_modifier = dmabuf_meta->drm_modifier;
